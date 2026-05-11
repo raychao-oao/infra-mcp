@@ -46,12 +46,14 @@ async def delete_gitea_repo(
             }
 
         # Additional protection: Check for protected repositories
+        # Supports both "repo" and "owner/repo" formats in GITEA_PROTECTED_REPOS
         protected_repos_env = os.getenv("GITEA_PROTECTED_REPOS", "")
         protected_repos = [r.strip() for r in protected_repos_env.split(",") if r.strip()]
-        if repo in protected_repos:
+        full_name = f"{owner}/{repo}"
+        if repo in protected_repos or full_name in protected_repos:
             return {
                 "success": False,
-                "error": f"Repository '{repo}' is protected and cannot be deleted."
+                "error": f"Repository '{full_name}' is protected and cannot be deleted."
             }
 
         client = GiteaClient()

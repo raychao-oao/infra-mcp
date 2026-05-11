@@ -98,21 +98,25 @@ class CloudflareClient:
 
     # Zone helpers
     async def get_zone_id(self, domain: str) -> str:
-        """Get zone ID for a domain."""
-        # Extract root domain (e.g., 'app.your-domain.com' -> 'your-domain.com')
+        """Get zone ID for a domain.
+
+        Tries 2-level root first (example.com), then 3-level (example.co.uk)
+        to handle ccTLD public suffixes like .co.uk, .com.tw, .com.au.
+        """
         parts = domain.split(".")
+        candidates = []
         if len(parts) >= 2:
-            root_domain = ".".join(parts[-2:])
-        else:
-            root_domain = domain
+            candidates.append(".".join(parts[-2:]))
+        if len(parts) >= 3:
+            candidates.append(".".join(parts[-3:]))
 
-        data = await self.get("/zones", params={"name": root_domain})
-        zones = data.get("result", [])
+        for candidate in candidates:
+            data = await self.get("/zones", params={"name": candidate})
+            zones = data.get("result", [])
+            if zones:
+                return zones[0]["id"]
 
-        if not zones:
-            raise CloudflareAPIError(f"Zone not found for domain: {root_domain}")
-
-        return zones[0]["id"]
+        raise CloudflareAPIError(f"Zone not found for domain: {domain}")
 
     async def list_zones(self) -> list:
         """List all zones in the account."""

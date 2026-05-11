@@ -3,7 +3,7 @@ Port Allocation Data Model
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Enum
+from sqlalchemy import Column, String, Integer, DateTime, Enum, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 import enum
 from main.config import INFRA_DEFAULT_SERVER
@@ -23,6 +23,9 @@ class PortAllocation(Base):
     """Port allocation record."""
 
     __tablename__ = "port_allocations"
+    __table_args__ = (
+        UniqueConstraint("port", "server", name="uq_port_server"),
+    )
 
     # Primary key
     allocation_id = Column(String, primary_key=True)

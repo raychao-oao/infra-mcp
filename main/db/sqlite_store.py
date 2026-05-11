@@ -24,13 +24,18 @@ class SQLiteStore(ResourceStore):
         Initialize SQLite store.
 
         Args:
-            database_url: Database URL (e.g., "sqlite:///./configs/resources.db")
+            database_url: SQLite database URL (e.g., "sqlite:///./configs/resources.db")
         """
+        if not database_url.startswith("sqlite:///") and not database_url.startswith("sqlite+aiosqlite:///"):
+            raise ValueError(
+                f"Unsupported DATABASE_URL scheme: {database_url!r}. "
+                "Only sqlite:/// URLs are supported (e.g. sqlite:///./configs/resources.db)"
+            )
+
         self.database_url = database_url
 
         # Convert to async URL if needed
         if database_url.startswith("sqlite:///"):
-            # For SQLite, use aiosqlite
             async_url = database_url.replace("sqlite:///", "sqlite+aiosqlite:///")
         else:
             async_url = database_url

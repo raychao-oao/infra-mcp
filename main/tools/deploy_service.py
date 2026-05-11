@@ -90,22 +90,18 @@ async def write_file_via_ssh(
     Returns:
         Dict with success status
     """
-    # Escape content for shell
-    escaped_content = content.replace("'", "'\\''")
-
     if sudo:
         # Write to temp file first, then sudo move
         temp_file = f"/tmp/deploy_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-        cmd = f"cat > {temp_file} << 'EOFCONTENT'\n{content}\nEOFCONTENT"
+        cmd = f"cat > {q(temp_file)} << 'EOFCONTENT'\n{content}\nEOFCONTENT"
         result = await run_ssh_command(server, cmd)
         if not result["success"]:
             return result
 
-        # Move with sudo
-        move_cmd = f"sudo mv {temp_file} {file_path}"
+        move_cmd = f"sudo mv {q(temp_file)} {q(file_path)}"
         return await run_ssh_command(server, move_cmd)
     else:
-        cmd = f"cat > {file_path} << 'EOFCONTENT'\n{content}\nEOFCONTENT"
+        cmd = f"cat > {q(file_path)} << 'EOFCONTENT'\n{content}\nEOFCONTENT"
         return await run_ssh_command(server, cmd)
 
 

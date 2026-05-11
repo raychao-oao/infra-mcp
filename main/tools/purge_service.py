@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any
 
 from main.db.sqlite_store import SQLiteStore
 from main.tools.release_port import release_port
-from main.utils import get_service_name
+from main.utils import get_service_name, validate_project_path
 
 
 async def purge_service(
@@ -152,7 +152,8 @@ async def purge_service(
         if remove_app_files and deployment.app_path:
             app_result = await remove_directory(
                 path=deployment.app_path,
-                server=server
+                server=server,
+                project=project,
             )
             if app_result["success"]:
                 files_removed.append(deployment.app_path)
@@ -160,7 +161,8 @@ async def purge_service(
         if remove_static_files and deployment.static_path:
             static_result = await remove_directory(
                 path=deployment.static_path,
-                server=server
+                server=server,
+                project=project,
             )
             if static_result["success"]:
                 files_removed.append(deployment.static_path)
@@ -168,7 +170,8 @@ async def purge_service(
         if remove_data and deployment.data_path:
             data_result = await remove_directory(
                 path=deployment.data_path,
-                server=server
+                server=server,
+                project=project,
             )
             if data_result["success"]:
                 files_removed.append(deployment.data_path)
@@ -176,7 +179,8 @@ async def purge_service(
         if remove_logs and deployment.log_path:
             logs_result = await remove_directory(
                 path=deployment.log_path,
-                server=server
+                server=server,
+                project=project,
             )
             if logs_result["success"]:
                 files_removed.append(deployment.log_path)
@@ -428,7 +432,8 @@ async def remove_dns_cname_record(
 
 async def remove_directory(
     path: str,
-    server: str
+    server: str,
+    project: str = "",
 ) -> Dict[str, Any]:
     """
     Remove directory on VPS server.
@@ -436,6 +441,7 @@ async def remove_directory(
     Args:
         path: Directory path to remove
         server: VPS server name
+        project: Project name (used to validate path scope)
 
     Returns:
         Dict with success status
@@ -443,6 +449,16 @@ async def remove_directory(
 
     from main.providers.ssh_provider import async_run_command
     from main.utils import q
+
+    # Validate path is project-scoped before deletion
+    try:
+        validate_project_path(path, project, "path")
+    except ValueError as e:
+        return {
+            "success": False,
+            "error": "INVALID_PATH",
+            "message": str(e),
+        }
 
     try:
         result = await async_run_command(server, f"rm -rf {q(path)}")

@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 import re
 
+from sqlalchemy.exc import IntegrityError
+
 from main.db.sqlite_store import SQLiteStore
 from main.config import INFRA_DEFAULT_SERVER
 
@@ -101,36 +103,55 @@ async def allocate_port(
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     allocation_id = f"alloc_{timestamp}_{port_to_allocate:04d}"
 
-    # Allocate the port
-    try:
-        allocation = await store.allocate_port(
-            allocation_id=allocation_id,
-            port=port_to_allocate,
-            project=project,
-            service=service,
-            server=server,
-            notes=notes
-        )
+    # Allocate the port — retry once on race condition (unique constraint violation)
+    for attempt in range(2):
+        try:
+            allocation = await store.allocate_port(
+                allocation_id=allocation_id,
+                port=port_to_allocate,
+                project=project,
+                service=service,
+                server=server,
+                notes=notes
+            )
 
-        return {
-            "success": True,
-            "allocated_port": allocation.port,
-            "allocation_id": allocation.allocation_id,
-            "project": allocation.project,
-            "service": allocation.service,
-            "server": allocation.server,
-            "allocated_at": allocation.allocated_at.isoformat(),
-            "status": allocation.status.value,
-            "notes": allocation.notes,
-            "message": f"Port {allocation.port} allocated to {project}/{service}"
-        }
+            return {
+                "success": True,
+                "allocated_port": allocation.port,
+                "allocation_id": allocation.allocation_id,
+                "project": allocation.project,
+                "service": allocation.service,
+                "server": allocation.server,
+                "allocated_at": allocation.allocated_at.isoformat(),
+                "status": allocation.status.value,
+                "notes": allocation.notes,
+                "message": f"Port {allocation.port} allocated to {project}/{service}"
+            }
 
-    except Exception as e:
-        return {
-            "success": False,
-            "error": "ALLOCATION_FAILED",
-            "message": f"Failed to allocate port: {str(e)}"
-        }
+        except IntegrityError:
+            if attempt == 0 and not preferred_port:
+                # Race condition: another request took this port; find the next one
+                port_to_allocate = await find_next_available_port(store, server)
+                if port_to_allocate is None:
+                    return {
+                        "success": False,
+                        "error": "NO_PORTS_AVAILABLE",
+                        "message": f"No available ports in range ({PORT_MIN}-{PORT_MAX}) on server {server}"
+                    }
+                timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                allocation_id = f"alloc_{timestamp}_{port_to_allocate:04d}"
+            else:
+                return {
+                    "success": False,
+                    "error": "PORT_ALREADY_ALLOCATED",
+                    "message": f"Port {port_to_allocate} is already allocated (conflict)"
+                }
+        except Exception:
+            return {
+                "success": False,
+                "error": "ALLOCATION_FAILED",
+                "message": "Failed to allocate port"
+            }
 
 
 async def find_next_available_port(store: SQLiteStore, server: str = INFRA_DEFAULT_SERVER) -> Optional[int]:

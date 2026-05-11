@@ -263,6 +263,17 @@ async def validate_register_service_input(data: Dict[str, Any]) -> tuple[bool, O
             if not isinstance(data[field], str):
                 return False, f"Field '{field}' must be a string"
 
+    # Validate that user-supplied paths are project-scoped and safe
+    from main.utils import validate_project_path
+    project = data.get("project", "")
+    path_fields = ["app_path", "static_path", "data_path", "log_path", "config_path"]
+    for field in path_fields:
+        if data.get(field):
+            try:
+                validate_project_path(data[field], project, field)
+            except ValueError as e:
+                return False, str(e)
+
     # Validate optional dict fields
     dict_fields = ["caddy_rules", "environment", "systemd_config"]
     for field in dict_fields:

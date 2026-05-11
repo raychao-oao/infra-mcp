@@ -6,8 +6,10 @@ FastAPI-based MCP server for infrastructure resource management.
 Accessible at: https://{INFRA_DOMAIN}/mcp (configure via INFRA_DOMAIN env var)
 """
 
+import hmac
 import json
 import os
+import re
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
@@ -191,13 +193,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware for remote access
-_cors_origins = ["http://localhost:*"]
+# CORS middleware — regex covers localhost (any port) + deployed domain
+_cors_origin_regex = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
 if INFRA_DOMAIN:
-    _cors_origins.append(f"https://{INFRA_DOMAIN}")
+    _cors_origin_regex = f"({_cors_origin_regex}|https://{re.escape(INFRA_DOMAIN)})"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origin_regex=_cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -207,11 +209,13 @@ app.add_middleware(
 if MCP_API_KEY:
     class APIKeyMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
-            # Skip auth for health endpoints
-            if request.url.path in ("/", "/health"):
+            # Skip auth for health endpoints and CORS preflight
+            if request.url.path in ("/", "/health") or request.method == "OPTIONS":
                 return await call_next(request)
             auth = request.headers.get("Authorization", "")
-            if not auth.startswith("Bearer ") or auth[7:] != MCP_API_KEY:
+            token = auth[7:] if auth.startswith("Bearer ") else ""
+            # Constant-time comparison prevents timing attacks
+            if not hmac.compare_digest(token.encode(), MCP_API_KEY.encode()):
                 return JSONResponse(
                     status_code=401,
                     content={"error": "Unauthorized: valid Bearer token required"},
@@ -219,6 +223,8 @@ if MCP_API_KEY:
             return await call_next(request)
 
     app.add_middleware(APIKeyMiddleware)
+    if len(MCP_API_KEY) < 32:
+        print("⚠️  MCP_API_KEY is shorter than 32 characters — consider using a longer key")
     print("🔒 API key authentication enabled")
 
 # Configure logging
@@ -272,11 +278,10 @@ async def health_check():
     # Check database connection
     if store:
         try:
-            # Try to list resources to verify database is working
             await store.list_port_allocations()
             checks["database"] = "ok"
-        except Exception as e:
-            checks["database"] = f"error: {str(e)}"
+        except Exception:
+            checks["database"] = "error"
     else:
         checks["database"] = "not_initialized"
 
@@ -1325,6 +1330,16 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     }
                 )
 
+            if not isinstance(arguments, dict):
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "jsonrpc": "2.0",
+                        "id": request.id,
+                        "error": {"code": -32602, "message": "Parameter 'arguments' must be an object"}
+                    }
+                )
+
             # Execute the requested tool
             result = None
 
@@ -1759,12 +1774,13 @@ async def mcp_endpoint(request: JSONRPCRequest):
             }
         )
     except Exception as e:
+        logger.error("Unhandled error in mcp_endpoint: %s", e, exc_info=True)
         return JSONResponse(
             status_code=200,
             content={
                 "jsonrpc": "2.0",
                 "id": request.id if hasattr(request, 'id') else None,
-                "error": {"code": -32603, "message": str(e)}
+                "error": {"code": -32603, "message": "Internal server error"}
             }
         )
 

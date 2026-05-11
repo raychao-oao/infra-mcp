@@ -8,11 +8,10 @@ since the API token may not have DNS edit permissions.
 """
 
 import asyncio
-import subprocess
 from typing import Any, Optional
 from main.tools.cloudflare.base import get_client, CloudflareAPIError
 from main.config import INFRA_SERVERS, INFRA_DEFAULT_SERVER
-from main.utils import q, validate_hostname
+from main.utils import validate_hostname, validate_identifier
 
 
 # Valid DNS record types
@@ -107,12 +106,18 @@ async def _create_dns_via_cloudflared(
     if server not in VPS_SERVERS:
         raise CloudflareAPIError(f"Unknown server: {server}. Valid: {', '.join(VPS_SERVERS)}")
 
-    # Run cloudflared tunnel route dns via SSH
-    cmd = f"ssh {server} 'cloudflared tunnel route dns {q(tunnel_name)} {q(domain)}'"
-
+    # Validate inputs before passing to SSH — prevents injection via nested quoting
     try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
+        validate_identifier(tunnel_name, "tunnel_name")
+        validate_hostname(domain)
+    except ValueError as e:
+        raise CloudflareAPIError(str(e))
+
+    # Use execv-style (no shell) so arguments are never interpreted by a shell
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ssh", server,
+            "cloudflared", "tunnel", "route", "dns", tunnel_name, domain,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -204,7 +209,7 @@ async def create_dns_record(
     zone_id = await client.get_zone_id(domain)
 
     # Build record data
-    record_data = {
+    record_data: dict[str, Any] = {
         "type": record_type.upper(),
         "name": name or domain,
         "content": content,
@@ -268,7 +273,7 @@ async def update_dns_record(
 
     # Find record if record_id not provided
     if not record_id:
-        params = {"name": domain}
+        params: dict[str, Any] = {"name": domain}
         if record_type:
             params["type"] = record_type.upper()
 
@@ -286,7 +291,7 @@ async def update_dns_record(
         existing_record = data.get("result", {})
 
     # Build update data (merge with existing)
-    update_data = {
+    update_data: dict[str, Any] = {
         "type": existing_record.get("type"),
         "name": existing_record.get("name"),
         "content": content or existing_record.get("content"),
@@ -419,7 +424,7 @@ async def list_dns_records(
             }
 
     # Build query params
-    params = {"per_page": min(per_page, 5000)}
+    params: dict[str, Any] = {"per_page": min(per_page, 5000)}
     if record_type:
         params["type"] = record_type.upper()
     if name_contains:
