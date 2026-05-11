@@ -21,6 +21,7 @@ DNS:
 
 import asyncio
 import os
+import secrets
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -90,10 +91,16 @@ async def write_file_via_ssh(
     Returns:
         Dict with success status
     """
+    # Use a random delimiter to prevent content from escaping the heredoc
+    delimiter = f"EOF_{secrets.token_hex(16)}"
+    # Regenerate until the delimiter does not appear in content (astronomically unlikely)
+    while delimiter in content:
+        delimiter = f"EOF_{secrets.token_hex(16)}"
+
     if sudo:
         # Write to temp file first, then sudo move
-        temp_file = f"/tmp/deploy_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-        cmd = f"cat > {q(temp_file)} << 'EOFCONTENT'\n{content}\nEOFCONTENT"
+        temp_file = f"/tmp/deploy_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}_{secrets.token_hex(4)}"
+        cmd = f"cat > {q(temp_file)} << '{delimiter}'\n{content}\n{delimiter}"
         result = await run_ssh_command(server, cmd)
         if not result["success"]:
             return result
@@ -101,7 +108,7 @@ async def write_file_via_ssh(
         move_cmd = f"sudo mv {q(temp_file)} {q(file_path)}"
         return await run_ssh_command(server, move_cmd)
     else:
-        cmd = f"cat > {q(file_path)} << 'EOFCONTENT'\n{content}\nEOFCONTENT"
+        cmd = f"cat > {q(file_path)} << '{delimiter}'\n{content}\n{delimiter}"
         return await run_ssh_command(server, cmd)
 
 
@@ -603,6 +610,13 @@ async def deploy_service(
 
             # Refresh deployment
             deployment = await store.get_service_deployment(project, service, server)
+            if deployment is None:
+                return {
+                    "success": False,
+                    "error": "DEPLOYMENT_NOT_FOUND",
+                    "message": "Deployment record disappeared after port allocation",
+                    "steps_completed": steps_completed,
+                }
             steps_completed.append("port_allocated")
             deployment_info["port"] = deployment.port
 
@@ -695,6 +709,13 @@ async def deploy_service(
 
         # Get updated deployment
         deployment = await store.get_service_deployment(project, service, server)
+        if deployment is None:
+            return {
+                "success": False,
+                "error": "DEPLOYMENT_NOT_FOUND",
+                "message": "Deployment record not found after status update",
+                "steps_completed": steps_completed,
+            }
 
         return {
             "success": True,

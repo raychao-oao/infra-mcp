@@ -2,6 +2,7 @@
 Shared utility functions for Infrastructure MCP tools.
 """
 
+import os
 import re
 import shlex
 
@@ -77,23 +78,46 @@ def validate_service_name(name: str, field: str = "service_name") -> str:
 def validate_project_path(path: str, project: str, field: str = "path") -> str:
     """Raise ValueError if path is not safely scoped to the given project.
 
-    Guards against path traversal and accidental targeting of system directories
-    in register_service and purge_service operations.
+    Requires the path to be under one of the known allowed roots with the project
+    name as the exact first subdirectory component — e.g. /var/www/{project}/...
+    or ~/PRJ/{project}/...  A substring match like "project in path" is NOT
+    sufficient because /etc/myproject-data would pass it.
     """
     if "\x00" in path:
         raise ValueError(f"Invalid {field}: null byte not allowed")
-    # Reject traversal components
-    parts = path.replace("\\", "/").split("/")
-    if ".." in parts:
+
+    # Normalize to collapse .. and extra slashes before any check
+    normalized = os.path.normpath(path.lstrip("~"))  # strip leading ~ for normpath
+    if ".." in normalized.split(os.sep):
         raise ValueError(f"Invalid {field}: path traversal (..) not allowed")
-    # Must contain the project name so purge/chown stays scoped
-    if project not in path:
-        raise ValueError(f"Invalid {field}: path must be scoped to project '{project}'")
-    # Block system directories
-    resolved = path if path.startswith("/") else path
-    for prefix in _DANGEROUS_PATH_PREFIXES:
-        if resolved.startswith(prefix):
-            raise ValueError(f"Invalid {field}: path cannot target system directory {prefix}")
+
+    # Allowed roots and the expected pattern after them
+    # Format: (prefix_to_strip, path_must_start_with_after_strip)
+    # For tilde paths we compare the expanded form; for absolute we use literal prefix.
+    def _starts_with_component(p: str, root: str, project: str) -> bool:
+        """Return True if p starts with root/{project}/ or equals root/{project}."""
+        base = root.rstrip("/") + "/" + project
+        return p == base or p.startswith(base + "/")
+
+    is_valid = (
+        _starts_with_component(path, "/var/www", project)
+        or _starts_with_component(path, "/var/log", project)
+        or _starts_with_component(path, "~/PRJ", project)
+        or _starts_with_component(path, "/tmp", project)  # for internal temp usage
+    )
+
+    if not is_valid:
+        raise ValueError(
+            f"Invalid {field}: path must be under /var/www/{project}/, "
+            f"/var/log/{project}/, or ~/PRJ/{project}/"
+        )
+
+    # Belt-and-suspenders: also block any absolute path that hits a dangerous prefix
+    if path.startswith("/"):
+        for prefix in _DANGEROUS_PATH_PREFIXES:
+            if path.startswith(prefix):
+                raise ValueError(f"Invalid {field}: path cannot target system directory {prefix}")
+
     return path
 
 

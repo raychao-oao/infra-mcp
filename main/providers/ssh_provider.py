@@ -43,16 +43,18 @@ def run_command(
     """
     validate_identifier(server, "server")
     if is_local_server(server):
-        full_cmd = command
-    else:
-        full_cmd = f"ssh {server} {command!r}"
-
+        return subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
     return subprocess.run(
-        full_cmd,
-        shell=True,
+        ["ssh", server, command],
         capture_output=True,
         text=True,
-        timeout=timeout
+        timeout=timeout,
     )
 
 
@@ -76,17 +78,20 @@ async def async_run_command(
         Dict with success status, stdout, stderr
     """
     validate_identifier(server, "server")
-    if is_local_server(server):
-        full_cmd = command
-    else:
-        full_cmd = f"ssh {server} {command!r}"
 
     try:
-        proc = await asyncio.create_subprocess_shell(
-            full_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        if is_local_server(server):
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        else:
+            proc = await asyncio.create_subprocess_exec(
+                "ssh", server, command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
         try:
             stdout, stderr = await asyncio.wait_for(

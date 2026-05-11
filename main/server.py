@@ -1350,8 +1350,8 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await allocate_port(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
+                    project=arguments["project"],
+                    service=arguments["service"],
                     preferred_port=arguments.get("preferred_port"),
                     server=arguments.get("server", INFRA_DEFAULT_SERVER),
                     notes=arguments.get("notes")
@@ -1378,9 +1378,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await register_main_tunnel(
                     store=store,
-                    tunnel_name=arguments.get("tunnel_name"),
-                    cloudflare_tunnel_id=arguments.get("cloudflare_tunnel_id"),
-                    vps_server=arguments.get("vps_server"),
+                    tunnel_name=arguments["tunnel_name"],
+                    cloudflare_tunnel_id=arguments["cloudflare_tunnel_id"],
+                    vps_server=arguments["vps_server"],
                     tunnel_target=arguments.get("tunnel_target"),
                     credentials_file=arguments.get("credentials_file"),
                     config_file=arguments.get("config_file"),
@@ -1406,7 +1406,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await release_port(
                     store=store,
-                    port=arguments.get("port"),
+                    port=arguments["port"],
                     server=arguments.get("server", INFRA_DEFAULT_SERVER)
                 )
 
@@ -1417,10 +1417,10 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await register_service(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
-                    server=arguments.get("server"),
-                    service_type=arguments.get("service_type"),
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"],
+                    service_type=arguments["service_type"],
                     port=arguments.get("port"),
                     hostname=arguments.get("hostname"),
                     tunnel_name=arguments.get("tunnel_name"),
@@ -1442,9 +1442,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await deploy_service(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
-                    server=arguments.get("server"),
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"],
                     cloudflare_api_token=arguments.get("cloudflare_api_token"),
                     cloudflare_account_id=arguments.get("cloudflare_account_id")
                 )
@@ -1456,9 +1456,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await stop_service(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
-                    server=arguments.get("server")
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"]
                 )
 
             elif tool_name == "purge_service":
@@ -1468,9 +1468,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await purge_service(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
-                    server=arguments.get("server"),
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"],
                     remove_app_files=arguments.get("remove_app_files", False),
                     remove_static_files=arguments.get("remove_static_files", False),
                     remove_data=arguments.get("remove_data", False),
@@ -1485,10 +1485,10 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await upgrade_service(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
-                    server=arguments.get("server"),
-                    new_service_type=arguments.get("new_service_type"),
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"],
+                    new_service_type=arguments["new_service_type"],
                     app_path=arguments.get("app_path"),
                     notes=arguments.get("notes")
                 )
@@ -1500,9 +1500,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await get_service_info(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
-                    server=arguments.get("server")
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"]
                 )
 
             # Security audit tools
@@ -1513,7 +1513,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await check_listening_ports(
                     store=store,
-                    server=arguments.get("server"),
+                    server=arguments["server"],
                     port=arguments.get("port")
                 )
 
@@ -1524,9 +1524,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await validate_service_security(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
-                    server=arguments.get("server"),
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"],
                     auto_fix=arguments.get("auto_fix", False)
                 )
 
@@ -1548,9 +1548,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await restart_service(
                     store=store,
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
-                    server=arguments.get("server"),
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"],
                     component=arguments.get("component", "service")
                 )
 
@@ -1561,7 +1561,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await get_caddy_config(
                     store=store,
-                    server=arguments.get("server"),
+                    server=arguments["server"],
                     project=arguments.get("project"),
                     service=arguments.get("service")
                 )
@@ -1573,7 +1573,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await get_tunnel_config(
                     store=store,
-                    server=arguments.get("server")
+                    server=arguments["server"]
                 )
 
             elif tool_name == "get_service_logs":
@@ -1583,9 +1583,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await get_service_logs(
                     store=store,
-                    server=arguments.get("server"),
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
+                    server=arguments["server"],
+                    project=arguments["project"],
+                    service=arguments["service"],
                     component=arguments.get("component", "service"),
                     lines=arguments.get("lines", 50),
                     since=arguments.get("since")
@@ -1598,9 +1598,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
                 result = await check_service_health(
                     store=store,
-                    server=arguments.get("server"),
-                    project=arguments.get("project"),
-                    service=arguments.get("service"),
+                    server=arguments["server"],
+                    project=arguments["project"],
+                    service=arguments["service"],
                     include_system_stats=arguments.get("include_system_stats", False)
                 )
 
@@ -1693,7 +1693,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
             elif tool_name == "create_gitea_repo":
                 result = await create_gitea_repo(
-                    name=arguments.get("name"),
+                    name=arguments["name"],
                     description=arguments.get("description", ""),
                     private=arguments.get("private", False),
                     auto_init=arguments.get("auto_init", True),
@@ -1711,15 +1711,15 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
             elif tool_name == "get_gitea_repo":
                 result = await get_gitea_repo(
-                    owner=arguments.get("owner"),
-                    repo=arguments.get("repo")
+                    owner=arguments["owner"],
+                    repo=arguments["repo"]
                 )
 
             elif tool_name == "delete_gitea_repo":
                 result = await delete_gitea_repo(
-                    owner=arguments.get("owner"),
-                    repo=arguments.get("repo"),
-                    danger_token=arguments.get("danger_token")
+                    owner=arguments["owner"],
+                    repo=arguments["repo"],
+                    danger_token=arguments.get("danger_token", "")
                 )
 
             else:
