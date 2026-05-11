@@ -12,7 +12,7 @@
     3. 執行: python new_project_setup.py
 
 或者使用命令列參數:
-    python new_project_setup.py --project my-app --service web --hostname myapp.nowhere.tw --port 5000
+    python new_project_setup.py --project my-app --service web --hostname myapp.your-domain.com --port 5000
 """
 
 import asyncio
@@ -34,14 +34,14 @@ async def setup_infrastructure_interactive():
     # 收集資訊
     project = input("專案名稱 (例如: my-blog): ").strip()
     service = input("服務名稱 (例如: web, api, frontend): ").strip()
-    hostname = input("公開 hostname (例如: myapp.nowhere.tw): ").strip()
+    hostname = input("公開 hostname (例如: myapp.your-domain.com): ").strip()
     port_input = input("偏好的 port (留空自動分配): ").strip()
     preferred_port = int(port_input) if port_input else None
 
     deploy = input("是否部署到 VPS? (y/N): ").strip().lower()
     deploy_server = None
     if deploy == 'y':
-        deploy_server = input("伺服器名稱 (例如: asablue): ").strip()
+        deploy_server = input("伺服器名稱 (例如: prod): ").strip()
 
     print("\n正在設定基礎設施...")
 

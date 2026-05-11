@@ -7,9 +7,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=jcchao
-Group=jcchao
-WorkingDirectory=/home/jcchao/PRJ/${PROJECT}
+User=YOUR_USER
+Group=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/${PROJECT}
 
 # IMPORTANT: Set HOST to 127.0.0.1 for Zero Trust
 Environment="HOST=127.0.0.1"
@@ -17,7 +17,7 @@ Environment="PORT=${APP_PORT}"
 Environment="NODE_ENV=production"
 
 # Flask example with Gunicorn
-ExecStart=/home/jcchao/PRJ/${PROJECT}/venv/bin/gunicorn \
+ExecStart=/home/YOUR_USER/${PROJECT}/venv/bin/gunicorn \
     --bind 127.0.0.1:${APP_PORT} \
     --workers 4 \
     --timeout 120 \

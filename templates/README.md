@@ -99,7 +99,7 @@ sudo systemctl status your-project-your-service
 |------|------|------|
 | `${PROJECT}` | 專案名稱 | `PAC`, `tcm-go` |
 | `${SERVICE}` | 服務名稱 | `dashboard`, `api` |
-| `${HOSTNAME}` | 公開域名 | `pac.nowhere.tw` |
+| `${HOSTNAME}` | 公開域名 | `myapp.your-domain.com` |
 | `${APP_PORT}` | 應用端口 | `8080`, `5000` |
 
 ## 安全檢查清單

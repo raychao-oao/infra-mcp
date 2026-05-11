@@ -26,7 +26,7 @@ class InfrastructureMCPClient:
 
     def __init__(
         self,
-        base_url: str = "https://infra.nowhere.tw/mcp",
+        base_url: str = "https://infra.your-domain.com/mcp",
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
         timeout: int = 30
@@ -130,7 +130,7 @@ class InfrastructureMCPClient:
         Args:
             project: 專案名稱
             tunnel_name: Tunnel 名稱
-            hostname: 公開 hostname (e.g., myapp.nowhere.tw)
+            hostname: 公開 hostname (e.g., myapp.your-domain.com)
             target_port: 目標 port
 
         Returns:
@@ -140,7 +140,7 @@ class InfrastructureMCPClient:
             >>> result = await client.register_tunnel(
             ...     "my-app",
             ...     "my-app-tunnel",
-            ...     "myapp.nowhere.tw",
+            ...     "myapp.your-domain.com",
             ...     5000
             ... )
         """
@@ -163,7 +163,7 @@ class InfrastructureMCPClient:
 
         Args:
             project: 專案名稱
-            server: VPS 伺服器名稱 (e.g., "asablue")
+            server: VPS 伺服器名稱 (e.g., "prod")
             tunnel_name: Tunnel 名稱
             service_port: 服務 port
 
@@ -173,7 +173,7 @@ class InfrastructureMCPClient:
         Example:
             >>> result = await client.deploy_tunnel(
             ...     "my-app",
-            ...     "asablue",
+            ...     "prod",
             ...     "my-app-tunnel",
             ...     5000
             ... )
@@ -244,7 +244,7 @@ async def setup_project_infrastructure(
         service_name: 服務名稱
         hostname: 公開 hostname
         preferred_port: 偏好的 port (可選)
-        deploy_server: 部署伺服器 (可選，如 "asablue")
+        deploy_server: 部署伺服器 (可選，如 "prod")
 
     Returns:
         設定結果，包含分配的 port 和 tunnel 資訊
@@ -253,9 +253,9 @@ async def setup_project_infrastructure(
         >>> result = await setup_project_infrastructure(
         ...     "my-blog",
         ...     "nextjs",
-        ...     "blog.nowhere.tw",
+        ...     "blog.your-domain.com",
         ...     preferred_port=3000,
-        ...     deploy_server="asablue"
+        ...     deploy_server="prod"
         ... )
         >>> print(f"Your app is ready at https://{result['hostname']}")
     """
@@ -335,7 +335,7 @@ async def example_usage():
     tunnel_result = await client.register_tunnel(
         project="example-app",
         tunnel_name="example-app",
-        hostname="example.nowhere.tw",
+        hostname="example.your-domain.com",
         target_port=5000
     )
     print(f"Tunnel registered: {tunnel_result}")
@@ -349,7 +349,7 @@ async def example_usage():
     result = await setup_project_infrastructure(
         project_name="my-blog",
         service_name="nextjs",
-        hostname="blog.nowhere.tw",
+        hostname="blog.your-domain.com",
         preferred_port=3000
     )
     print(f"✅ Infrastructure ready!")

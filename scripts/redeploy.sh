@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Redeploy Infrastructure MCP Server to asablue
+# Redeploy Infrastructure MCP Server to prod
 #
 # Usage:
 #   ./scripts/redeploy.sh          # Redeploy code and restart service
@@ -11,10 +11,10 @@
 set -e
 
 # Configuration
-SERVER="asablue"
-USER="jcchao"
-REMOTE_DIR="/home/jcchao/PRJ/oao-infra"
-PROJECT_NAME="oao-infra"
+SERVER="prod"
+USER="YOUR_USER"
+REMOTE_DIR="/home/YOUR_USER/infra-mcp"
+PROJECT_NAME="infra-mcp"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -83,7 +83,7 @@ if [ "$FULL_DEPLOY" = true ]; then
     echo ""
 
     ssh ${USER}@${SERVER} << 'EOF'
-cd /home/jcchao/PRJ/oao-infra
+cd /home/YOUR_USER/infra-mcp
 source venv/bin/activate
 pip install -r requirements.txt
 EOF
@@ -119,13 +119,13 @@ if [ "$SERVICE_STATUS" = "active" ]; then
     echo -e "${GREEN}🎉 Deployment completed successfully!${NC}"
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo -e "${BLUE}Service URL:${NC} https://infra.nowhere.tw"
-    echo -e "${BLUE}Health check:${NC} curl -s https://infra.nowhere.tw/health"
+    echo -e "${BLUE}Service URL:${NC} https://infra.your-domain.com"
+    echo -e "${BLUE}Health check:${NC} curl -s https://infra.your-domain.com/health"
     echo ""
 
     # Test health endpoint
     echo -e "${YELLOW}Testing health endpoint...${NC}"
-    HEALTH_RESPONSE=$(curl -s https://infra.nowhere.tw/health \
+    HEALTH_RESPONSE=$(curl -s https://infra.your-domain.com/health \
         -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
         -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")
 

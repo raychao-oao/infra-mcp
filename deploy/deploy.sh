@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-# Deployment script for Infrastructure MCP Server to asablue
+# Deployment script for Infrastructure MCP Server to prod
 # Usage: ./deploy/deploy.sh
 
-SERVER="asablue"
-REMOTE_DIR="/home/jcchao/PRJ/oao-infra"
-PROJECT_NAME="oao-infra"
+SERVER="prod"
+REMOTE_DIR="/home/YOUR_USER/infra-mcp"
+PROJECT_NAME="infra-mcp"
 
 echo "🚀 Deploying Infrastructure MCP Server to $SERVER"
 echo "================================================"
@@ -77,7 +77,7 @@ echo "🌐 Cloudflare Tunnel setup:"
 echo "1. Create tunnel: cloudflared tunnel create infra-mcp"
 echo "2. Update deploy/cloudflared-config-infra-mcp.yml with tunnel ID"
 echo "3. Copy config: cp deploy/cloudflared-config-infra-mcp.yml ~/.cloudflared/config-infra-mcp.yml"
-echo "4. Configure DNS: cloudflared tunnel route dns infra-mcp infra.nowhere.tw"
+echo "4. Configure DNS: cloudflared tunnel route dns infra-mcp infra.your-domain.com"
 echo "5. Start tunnel: Use vps-tunnel-management skill"
 echo ""
 echo "🔒 Caddy setup:"
