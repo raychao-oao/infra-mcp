@@ -39,26 +39,30 @@ python main/server.py
 
 ### 3. 測試第一個 Tool（2 分鐘）
 
-**在另一個終端執行**：
+**在另一個終端執行**（所有操作皆透過 `/mcp` endpoint，JSON-RPC 2.0 格式）：
 
 ```bash
-# 1. 檢查 tools 數量
-curl -s http://localhost:8000/tools/list | jq '.tools | length'
+# 1. 列出所有可用 tools
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq '.result.tools | length'
 # 預期輸出: 31
 
 # 2. 列出所有 tool 名稱
-curl -s http://localhost:8000/tools/list | jq -r '.tools[].name' | head -5
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq -r '.result.tools[].name' | head -5
 # 預期輸出: allocate_port, release_port, list_resources, ...
 
 # 3. 測試 list_resources tool
-curl -X POST http://localhost:8000/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"tool":"list_resources","arguments":{"resource_type":"all"}}' | jq
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_resources","arguments":{"resource_type":"all"}}}' | jq
 
 # 4. 測試 allocate_port
-curl -X POST http://localhost:8000/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"tool":"allocate_port","arguments":{"project":"test","service":"demo","server":"prod"}}' | jq
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"allocate_port","arguments":{"project":"test","service":"demo","server":"prod"}}}' | jq
 ```
 
 ---
@@ -68,34 +72,33 @@ curl -X POST http://localhost:8000/tools/call \
 ### 查看已分配的 Ports
 
 ```bash
-curl -X POST http://localhost:8000/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"tool":"list_resources","arguments":{"resource_type":"ports"}}' | jq
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_resources","arguments":{"resource_type":"ports"}}}' | jq
 ```
 
-### 檢查 prod 的安全狀態
+### 檢查伺服器的安全狀態
 
 ```bash
-curl -X POST http://localhost:8000/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"tool":"audit_all_services","arguments":{"server":"prod"}}' | jq
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"audit_all_services","arguments":{"server":"prod"}}}' | jq
 ```
 
 ### 列出所有已註冊的主 Tunnels
 
 ```bash
-curl -X POST http://localhost:8000/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"tool":"list_main_tunnels","arguments":{}}' | jq
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_main_tunnels","arguments":{}}}' | jq
 ```
 
 ### 查看服務資訊
 
 ```bash
-# 查看特定服務的詳細資訊
-curl -X POST http://localhost:8000/tools/call \
+curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"tool":"get_service_info","arguments":{"project":"pac","service":"dashboard","server":"prod"}}' | jq
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_service_info","arguments":{"project":"my-app","service":"web","server":"prod"}}}' | jq
 ```
 
 ---
@@ -192,8 +195,8 @@ chmod 644 infrastructure.db
 
 **學習更多**:
 - 閱讀 [`PROJECT.md`](PROJECT.md) 了解完整專案架構
-- 查看 [`docs/security-tools-guide.md`](docs/security-tools-guide.md) 學習安全工具
-- 參考 [`CLAUDE.md`](CLAUDE.md) 了解 AI 協作工作流
+- 查看 [`docs/MCP-API.md`](docs/MCP-API.md) 了解所有 tool 的 API 規格
+- 查看 [`docs/Architecture.md`](docs/Architecture.md) 了解系統架構
 
 **生產部署**:
 - SSH 到 prod: `ssh prod`

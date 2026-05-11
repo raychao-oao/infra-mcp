@@ -44,42 +44,38 @@ git clone <repository-url>
 cd infra-mcp
 
 # 2. Install Python dependencies
+python3.11 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 
 # 3. Setup environment
 cp .env.example .env
-# Edit .env with Cloudflare API tokens and VPS credentials
+# Edit .env with your server names, Cloudflare tokens, and SSH credentials
 
-# 4. Initialize resource database
-python main/init_db.py
-
-# 5. Start MCP server (development)
-python main/mcp_server.py
+# 4. Start MCP server (development)
+python main/server.py
+# Server starts at http://127.0.0.1:8000
 ```
 
 ### Using MCP Tools in Projects
 
 ```bash
-# From any project that needs infrastructure:
+# All tools are called via the /mcp endpoint (JSON-RPC 2.0)
 
 # Allocate a port for your service
-<use MCP tool: allocate_port>
-  project: "my-app"
-  service: "web-server"
-  preferred_port: 3000
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"allocate_port","arguments":{"project":"my-app","service":"web","server":"prod"}}}'
 
 # Register a Cloudflare Tunnel
-<use MCP tool: register_tunnel>
-  project: "my-app"
-  tunnel_name: "myapp"
-  hostname: "myapp.your-domain.com"
-  target_port: 3000
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"register_main_tunnel","arguments":{"server":"prod","tunnel_name":"my-app","tunnel_id":"<tunnel-id>"}}}'
 
-# Deploy to VPS
-<use MCP tool: deploy_to_vps>
-  project: "my-app"
-  server: "prod"
-  service_type: "flask"
+# Deploy a service
+curl -X POST http://localhost:8000/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"deploy_service","arguments":{"project":"my-app","service":"web","server":"prod"}}}'
 ```
 
 ## 🚢 Production Deployment
@@ -287,34 +283,29 @@ ls -la /home/YOUR_USER/infra-mcp/configs/resources.db
 ```
 infra-mcp/
 ├── main/                      # MCP server 主程式
-│   ├── mcp_server.py          # MCP server 入口
-│   ├── tools/                 # MCP tools 實作
+│   ├── server.py              # FastAPI + JSON-RPC 2.0 入口
+│   ├── config.py              # 環境變數載入
+│   ├── utils.py               # 共用工具函式
+│   ├── tools/                 # MCP tools 實作（每個 tool 一個檔案）
 │   │   ├── allocate_port.py
-│   │   ├── register_tunnel.py
-│   │   ├── deploy_to_vps.py
-│   │   └── list_resources.py
-│   ├── models/                # 資料模型
-│   │   ├── resource.py
-│   │   └── allocation.py
-│   └── db/                    # 資料庫操作
-│       └── manager.py
-├── configs/                   # 設定檔
-│   ├── servers.yml            # VPS 伺服器配置
-│   ├── cloudflare.yml         # Cloudflare 服務配置
-│   └── resources.json         # 資源分配資料庫
-├── scripts/                   # 管理腳本
-│   ├── ai_helpers.sh          # AI 協作輔助
-│   ├── prompts/               # AI prompt 模板
-│   └── wrappers/              # CLI wrappers
-├── logs/                      # 日誌輸出
+│   │   ├── deploy_service.py
+│   │   ├── register_service.py
+│   │   ├── list_resources.py
+│   │   ├── cloudflare/        # Cloudflare API tools
+│   │   └── gitea/             # Gitea repo management tools
+│   ├── models/                # SQLAlchemy 資料模型
+│   ├── db/                    # 資料庫存取層
+│   └── providers/             # SSH / Cloudflare provider
+├── configs/                   # 設定檔（gitignored）
+│   └── resources.db           # SQLite 資料庫
+├── deploy/                    # 部署設定
+│   └── infra-mcp.service      # systemd unit file
 ├── docs/                      # 專案文檔
 │   ├── Architecture.md        # 架構設計文檔
 │   ├── MCP-API.md             # MCP Tools API 規格
 │   ├── Data-Models.md         # 資料模型設計
-│   ├── Implementation-Plan.md # 實作計畫
-│   ├── documentation-standards.md
-│   └── ai_collaboration/      # AI 協作輸出
-├── CLAUDE.md                  # Claude Code 協作指引
+│   └── Implementation-Plan.md # 實作計畫
+├── .env.example               # 環境變數範本
 ├── PROJECT.md                 # 專案核心知識庫
 └── README.md                  # 本檔案
 ```
@@ -345,8 +336,6 @@ infra-mcp/
 
 **核心文檔**:
 - [`PROJECT.md`](./PROJECT.md) - 專案核心知識庫
-- [`CLAUDE.md`](./CLAUDE.md) - Claude Code 協作指引
-- [`docs/documentation-standards.md`](./docs/documentation-standards.md) - 文檔撰寫規範
 
 **架構設計文檔**:
 - [`docs/Architecture.md`](./docs/Architecture.md) - MCP Server 完整架構設計
@@ -371,6 +360,4 @@ infra-mcp/
 
 ---
 
-For detailed development workflows and AI collaboration guidelines, please refer to:
-- Claude Code: [`CLAUDE.md`](./CLAUDE.md)
-- Project Info: [`PROJECT.md`](./PROJECT.md)
+For detailed architecture and API documentation, see [`docs/`](./docs/).
