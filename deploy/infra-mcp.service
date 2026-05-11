@@ -13,7 +13,7 @@ Environment="PATH=/home/YOUR_USER/infra-mcp/venv/bin:/usr/local/bin:/usr/bin:/bi
 # Set INFRA_LOCAL_SERVER to the SSH alias of this machine (so local commands bypass SSH)
 Environment="INFRA_LOCAL_SERVER=prod"
 EnvironmentFile=/home/YOUR_USER/infra-mcp/.env
-ExecStart=/home/YOUR_USER/infra-mcp/venv/bin/uvicorn main.server:app --host 0.0.0.0 --port 8000 --workers 1
+ExecStart=/home/YOUR_USER/infra-mcp/venv/bin/uvicorn main.server:app --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
 RestartSec=10
 

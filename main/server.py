@@ -1710,7 +1710,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    host = os.getenv("SERVER_HOST", "0.0.0.0")
+    host = os.getenv("SERVER_HOST", "127.0.0.1")
     port = int(os.getenv("SERVER_PORT", "8000"))
 
     print(f"🌐 Starting server on {host}:{port}")
