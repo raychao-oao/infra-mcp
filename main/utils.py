@@ -10,6 +10,8 @@ import shlex
 _HOSTNAME_RE = re.compile(r'^[a-z0-9][a-z0-9.\-]{0,252}[a-z0-9]$')
 # Safe path: no shell metacharacters (;|&`$<>()\n\r\x00 or unquoted space)
 _UNSAFE_RE = re.compile(r'[;&|`$<>()\n\r\x00]')
+# Safe config value: no characters that break config file quoting (newlines, quotes, NUL)
+_CONFIG_UNSAFE_RE = re.compile(r'[\n\r\x00"\'\\]')
 # Safe identifier: project/service/server names (alphanumeric, hyphen, underscore)
 _IDENTIFIER_RE = re.compile(r'^[a-zA-Z0-9_-]{1,64}$')
 
@@ -37,6 +39,17 @@ def validate_safe_string(value: str, field: str = "value") -> str:
     """Raise ValueError if value contains shell metacharacters."""
     if _UNSAFE_RE.search(value):
         raise ValueError(f"Invalid {field}: contains unsafe characters")
+    return value
+
+
+def validate_config_value(value: str, field: str = "value") -> str:
+    """Raise ValueError if value contains characters unsafe in config file contexts.
+
+    Rejects newlines, quotes, and backslashes that could escape out of
+    Caddy/systemd config values.
+    """
+    if _CONFIG_UNSAFE_RE.search(value):
+        raise ValueError(f"Invalid {field}: contains characters not allowed in config files")
     return value
 
 

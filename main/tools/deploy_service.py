@@ -27,7 +27,7 @@ from typing import Optional, Dict, Any
 from main.db.sqlite_store import SQLiteStore
 from main.providers.ssh_provider import async_run_command
 from main.tools.allocate_port import allocate_port
-from main.utils import get_service_name, q, validate_hostname, validate_safe_string
+from main.utils import get_service_name, q, validate_hostname, validate_safe_string, validate_config_value, validate_identifier
 from main.config import INFRA_SERVERS, INFRA_DEFAULT_SERVER
 
 SSH_USER = os.getenv("SSH_USER", "ubuntu")
@@ -275,8 +275,12 @@ async def generate_and_write_caddy_config(
 
     try:
         validate_hostname(deployment.hostname)
+        if deployment.static_path:
+            validate_config_value(deployment.static_path, "static_path")
+        if deployment.log_path:
+            validate_config_value(deployment.log_path, "log_path")
     except ValueError as e:
-        return {"success": False, "error": "INVALID_HOSTNAME", "message": str(e)}
+        return {"success": False, "error": "INVALID_CONFIG_VALUE", "message": str(e)}
 
     # Generate Caddy config based on service type
     config_lines = [f"{deployment.hostname}:80 {{"]
@@ -368,6 +372,17 @@ async def generate_and_write_systemd_service(
     """
     service_type = deployment.service_type.value
     service_name = get_service_name(deployment.project, deployment.service, deployment.systemd_config)
+
+    # Validate values that go into config file content (not shell commands)
+    try:
+        if deployment.app_path:
+            validate_config_value(deployment.app_path, "app_path")
+        if deployment.environment:
+            for key, value in deployment.environment.items():
+                validate_identifier(key, "environment key")
+                validate_config_value(str(value), f"environment value for {key}")
+    except ValueError as e:
+        return {"success": False, "error": "INVALID_CONFIG_VALUE", "message": str(e)}
 
     if service_type in ["flask", "flask+static"]:
         # Flask service

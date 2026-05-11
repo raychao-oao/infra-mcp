@@ -320,7 +320,7 @@ infra-mcp/
 │   ├── Architecture.md        # 架構設計文檔
 │   ├── MCP-API.md             # MCP Tools API 規格
 │   ├── Data-Models.md         # 資料模型設計
-│   └── Implementation-Plan.md # 實作計畫
+│   └── MCP-Client-Setup.md    # MCP 客戶端設定指南
 ├── .env.example               # 環境變數範本
 └── README.md                  # 本檔案
 ```
