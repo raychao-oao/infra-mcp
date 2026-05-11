@@ -306,7 +306,6 @@ infra-mcp/
 │   ├── Data-Models.md         # 資料模型設計
 │   └── Implementation-Plan.md # 實作計畫
 ├── .env.example               # 環境變數範本
-├── PROJECT.md                 # 專案核心知識庫
 └── README.md                  # 本檔案
 ```
 
@@ -335,7 +334,6 @@ infra-mcp/
 ## 📚 文檔
 
 **核心文檔**:
-- [`PROJECT.md`](./PROJECT.md) - 專案核心知識庫
 
 **架構設計文檔**:
 - [`docs/Architecture.md`](./docs/Architecture.md) - MCP Server 完整架構設計

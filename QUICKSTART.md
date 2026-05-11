@@ -194,7 +194,6 @@ chmod 644 infrastructure.db
 ## 📚 下一步
 
 **學習更多**:
-- 閱讀 [`PROJECT.md`](PROJECT.md) 了解完整專案架構
 - 查看 [`docs/MCP-API.md`](docs/MCP-API.md) 了解所有 tool 的 API 規格
 - 查看 [`docs/Architecture.md`](docs/Architecture.md) 了解系統架構
 
