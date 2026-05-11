@@ -236,7 +236,7 @@ Result:
         "type": "string",
         "description": "Full hostname (e.g., 'myapp.your-domain.com', 'api.your-domain.com')",
         "required": true,
-        "pattern": "^[a-z0-9.-]+\\.(oao\\.tw|nowhere\\.tw)$"
+        "pattern": "^[a-z0-9.-]+\\.your-domain\\.com$"
       },
       "target_port": {
         "type": "integer",
@@ -385,7 +385,7 @@ Result:
 - 建立 cloudflared systemd service
 - 啟動 tunnel service
 
-**注意**：此 tool 只部署 tunnel，不部署應用程式。應用程式請使用 oao-infra 提供的 deployment scripts 或自行部署。
+**注意**：此 tool 只部署 tunnel，不部署應用程式。應用程式請使用 `deploy_service` tool 或自行部署。
 
 ### Use Cases
 

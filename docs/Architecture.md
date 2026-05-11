@@ -8,7 +8,7 @@
 
 ## 📖 Executive Summary
 
-OAO Infrastructure Management 是一個基於 MCP (Model Context Protocol) 的集中式基礎設施資源管理系統。透過 MCP Server 提供標準化工具，讓所有專案都能透過 Claude Code 統一申請和管理基礎設施資源（VPS、Cloudflare Tunnels、Port、Domain），避免資源衝突並提升組織擴展性。
+Infrastructure Management MCP 是一個基於 MCP (Model Context Protocol) 的集中式基礎設施資源管理系統。透過 MCP Server 提供標準化工具，讓所有專案都能透過 Claude Code 統一申請和管理基礎設施資源（VPS、Cloudflare Tunnels、Port、Domain），避免資源衝突並提升組織擴展性。
 
 ### 核心價值
 
@@ -252,7 +252,7 @@ servers:
     hostname: prod.your-domain.com
     ip: YOUR_SERVER_IP
     location: Germany
-    provider: Netcup
+    provider: your-provider
     plan: RS 1000 G12
     specs:
       cpu: AMD EPYC 9645 (4 cores)

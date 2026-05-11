@@ -46,7 +46,8 @@ async def delete_gitea_repo(
             }
 
         # Additional protection: Check for protected repositories
-        protected_repos = ["oao-infra", "services"]
+        protected_repos_env = os.getenv("GITEA_PROTECTED_REPOS", "")
+        protected_repos = [r.strip() for r in protected_repos_env.split(",") if r.strip()]
         if repo in protected_repos:
             return {
                 "success": False,

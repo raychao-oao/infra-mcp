@@ -81,7 +81,7 @@ Infrastructure MCP Server 將分三個階段實作，每個階段都能獨立運
 ### 檔案結構
 
 ```
-oao-infra/
+infra-mcp/
 ├── main/
 │   ├── mcp_server.py           # MCP server 主程式
 │   ├── __init__.py
@@ -568,7 +568,7 @@ python main/mcp_server.py
 ### Using Claude Code
 
 ```bash
-# 在 oao-infra 專案中
+# 在 infra-mcp 專案中
 source scripts/ai_helpers.sh
 
 # 使用 AI 協助實作

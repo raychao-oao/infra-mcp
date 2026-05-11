@@ -221,9 +221,9 @@ servers:
     # 基本資訊
     hostname: prod.your-domain.com
     ip: YOUR_SERVER_IP
-    location: Germany
-    provider: Netcup
-    plan: RS 1000 G12
+    location: your-location
+    provider: your-provider
+    plan: your-plan
 
     # 硬體規格
     specs:

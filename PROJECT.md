@@ -1,6 +1,6 @@
 # PROJECT.md - 專案核心知識庫
 
-**專案名稱**: OAO Infrastructure Management
+**專案名稱**: Infrastructure Management MCP
 **專案類型**: Infrastructure as Code / MCP Server
 **檔案版本**: v2.0_20260204_000000
 **建立時間**: 2025-12-28 14:30:00
@@ -10,7 +10,7 @@
 
 ## 📖 專案摘要
 
-OAO Infrastructure Management 是一個基於 MCP (Model Context Protocol) 的集中式基礎設施資源管理系統。透過 **31 個標準化的 MCP tools**，讓所有專案都能透過 Claude Code 統一申請和管理基礎設施資源，包括：
+Infrastructure Management MCP 是一個基於 MCP (Model Context Protocol) 的集中式基礎設施資源管理系統。透過 **31 個標準化的 MCP tools**，讓所有專案都能透過 Claude Code 統一申請和管理基礎設施資源，包括：
 
 - **VPS 伺服器**: 管理 4 台 VPS（prod, staging, dev1, dev2）
 - **Service Deployment**: Flask/Node.js/Static/Docker 服務部署
@@ -30,7 +30,7 @@ OAO Infrastructure Management 是一個基於 MCP (Model Context Protocol) 的�
 ### VPS Servers (4 台)
 
 **prod** (Production)
-- Provider: Netcup RS 1000 G12 (Germany)
+- Provider: your VPS provider
 - Specs: AMD EPYC 9645 (4 cores), 7.8GB RAM, 256GB NVMe
 - OS: Debian 13 (trixie)
 - Access: `ssh prod` (configured in ~/.ssh/config, IP: YOUR_SERVER_IP)

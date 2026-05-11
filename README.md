@@ -1,6 +1,6 @@
-# OAO Infrastructure Management
+# Infrastructure Management MCP
 
-Centralized infrastructure resource management with MCP (Model Context Protocol) server for scalable allocation of VPS servers, Cloudflare Tunnels, ports, and domains across OAO projects.
+Centralized infrastructure resource management with MCP (Model Context Protocol) server for scalable allocation of VPS servers, Cloudflare Tunnels, ports, and domains across your projects.
 
 ---
 
@@ -14,7 +14,7 @@ Centralized infrastructure resource management with MCP (Model Context Protocol)
 ## 🌐 管理的基礎設施
 
 ### VPS Servers
-- **prod.your-domain.com** - Production (Netcup RS 1000 G12, Germany)
+- **prod.your-domain.com** - Production (your VPS provider)
 - [Future servers...]
 
 ### Cloudflare Services
@@ -86,7 +86,7 @@ python main/mcp_server.py
 
 ### Current Deployment
 
-**Server**: prod.your-domain.com (Netcup RS 1000 G12, Germany)
+**Server**: prod.your-domain.com (your VPS provider)
 **Endpoint**: https://infra.your-domain.com
 **Status**: ✅ Live (deployed 2025-12-28)
 
