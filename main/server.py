@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import logging
@@ -142,6 +143,9 @@ load_dotenv()
 
 from main.config import INFRA_SERVERS, INFRA_DEFAULT_SERVER, INFRA_DOMAIN
 
+# Optional API key auth (set MCP_API_KEY env var to enable)
+MCP_API_KEY: str = os.getenv("MCP_API_KEY", "")
+
 # Server configuration
 SERVER_NAME = "infrastructure-mcp-server"
 SERVER_VERSION = "1.0.0"
@@ -198,6 +202,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Optional API key auth middleware — only active when MCP_API_KEY is set
+if MCP_API_KEY:
+    class APIKeyMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            # Skip auth for health endpoints
+            if request.url.path in ("/", "/health"):
+                return await call_next(request)
+            auth = request.headers.get("Authorization", "")
+            if not auth.startswith("Bearer ") or auth[7:] != MCP_API_KEY:
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": "Unauthorized: valid Bearer token required"},
+                )
+            return await call_next(request)
+
+    app.add_middleware(APIKeyMiddleware)
+    print("🔒 API key authentication enabled")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
