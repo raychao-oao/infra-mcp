@@ -11,7 +11,7 @@ from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
 from main.models.service_deployment import ServiceType
 from main.providers.ssh_provider import run_command
-from main.utils import get_service_name
+from main.utils import get_service_name, q
 
 
 async def restart_service(
@@ -88,7 +88,7 @@ async def _restart_main_service(
 
         try:
             result = run_command(
-                server, f"cd ~/PRJ/{project} && docker compose restart", timeout=60
+                server, f"cd ~/PRJ/{q(project)} && docker compose restart", timeout=60
             )
 
             if result.returncode != 0:
@@ -119,7 +119,7 @@ async def _restart_main_service(
         try:
             result = run_command(
                 server,
-                f"sudo systemctl restart {service_name} && sudo systemctl status {service_name} --no-pager -l",
+                f"sudo systemctl restart {q(service_name)} && sudo systemctl status {q(service_name)} --no-pager -l",
                 timeout=30
             )
 
@@ -206,7 +206,7 @@ async def _restart_tunnel(server: str) -> Dict[str, Any]:
         # Restart tunnel
         restart_result = run_command(
             server,
-            f"sudo systemctl restart {tunnel_service} && sudo systemctl status {tunnel_service} --no-pager -l | head -10",
+            f"sudo systemctl restart {q(tunnel_service)} && sudo systemctl status {q(tunnel_service)} --no-pager -l | head -10",
             timeout=30
         )
 

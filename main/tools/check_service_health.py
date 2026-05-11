@@ -12,7 +12,7 @@ from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
 from main.models.service_deployment import ServiceType
 from main.providers.ssh_provider import run_command
-from main.utils import get_service_name
+from main.utils import get_service_name, q
 
 
 async def check_service_health(
@@ -105,11 +105,11 @@ async def _check_specific_service(
 
     if service_type == ServiceType.DOCKER:
         # Check Docker container status
-        cmd = f"cd ~/PRJ/{project} && docker compose ps --format json"
+        cmd = f"cd ~/PRJ/{q(project)} && docker compose ps --format json"
     else:
         # Check systemd service status
         service_name = get_service_name(project, service, deployment.systemd_config)
-        cmd = f"systemctl is-active {service_name}"
+        cmd = f"systemctl is-active {q(service_name)}"
 
     try:
         result = run_command(server, cmd, timeout=10)
@@ -169,7 +169,7 @@ async def _check_infrastructure(server: str) -> Dict[str, Any]:
         if tunnel_result.stdout.strip():
             tunnel_service = tunnel_result.stdout.strip()
             status_result = run_command(
-                server, f"systemctl is-active {tunnel_service}", timeout=10
+                server, f"systemctl is-active {q(tunnel_service)}", timeout=10
             )
             tunnel_healthy = "active" in status_result.stdout
 

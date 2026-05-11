@@ -27,7 +27,7 @@ from typing import Optional, Dict, Any
 from main.db.sqlite_store import SQLiteStore
 from main.providers.ssh_provider import async_run_command
 from main.tools.allocate_port import allocate_port
-from main.utils import get_service_name
+from main.utils import get_service_name, q, validate_hostname, validate_safe_string
 from main.config import INFRA_SERVERS, INFRA_DEFAULT_SERVER
 
 SSH_USER = os.getenv("SSH_USER", "ubuntu")
@@ -135,7 +135,7 @@ async def create_directories(
     # 1. Create /var/www/{project}/ with sudo
     result = await run_ssh_command(
         server,
-        f"sudo mkdir -p {static_path} && sudo chown {SSH_USER}:{SSH_USER} {static_path}"
+        f"sudo mkdir -p {q(static_path)} && sudo chown {q(SSH_USER)}:{q(SSH_USER)} {q(static_path)}"
     )
     if result["success"]:
         created_dirs.append(static_path)
@@ -146,7 +146,7 @@ async def create_directories(
     prj_base = f"~/PRJ/{project}"
     result = await run_ssh_command(
         server,
-        f"mkdir -p {prj_base}"
+        f"mkdir -p {q(prj_base)}"
     )
     if result["success"]:
         created_dirs.append(prj_base)
@@ -157,7 +157,7 @@ async def create_directories(
     symlink_path = f"{prj_base}/www"
     result = await run_ssh_command(
         server,
-        f"ln -sfn {static_path} {symlink_path}"
+        f"ln -sfn {q(static_path)} {q(symlink_path)}"
     )
     if result["success"]:
         created_dirs.append(f"{symlink_path} -> {static_path}")
@@ -168,7 +168,7 @@ async def create_directories(
     if service_type != "static" and app_path:
         result = await run_ssh_command(
             server,
-            f"mkdir -p {app_path}"
+            f"mkdir -p {q(app_path)}"
         )
         if result["success"]:
             created_dirs.append(app_path)
@@ -189,7 +189,7 @@ async def create_directories(
     log_dir = f"/var/log/{project}"
     result = await run_ssh_command(
         server,
-        f"sudo mkdir -p {log_dir} && sudo chown {SSH_USER}:{SSH_USER} {log_dir}"
+        f"sudo mkdir -p {q(log_dir)} && sudo chown {q(SSH_USER)}:{q(SSH_USER)} {q(log_dir)}"
     )
     if result["success"]:
         created_dirs.append(log_dir)
@@ -224,7 +224,7 @@ async def create_dns_via_cloudflared(
     Returns:
         Dict with success status
     """
-    cmd = f"cloudflared tunnel route dns {tunnel_name} {hostname}"
+    cmd = f"cloudflared tunnel route dns {q(tunnel_name)} {q(hostname)}"
     result = await run_ssh_command(dns_server, cmd, timeout=60)
 
     if result["success"]:
@@ -272,6 +272,11 @@ async def generate_and_write_caddy_config(
             "error": "NO_HOSTNAME",
             "message": "No hostname configured for service"
         }
+
+    try:
+        validate_hostname(deployment.hostname)
+    except ValueError as e:
+        return {"success": False, "error": "INVALID_HOSTNAME", "message": str(e)}
 
     # Generate Caddy config based on service type
     config_lines = [f"{deployment.hostname}:80 {{"]
@@ -462,13 +467,13 @@ async def start_systemd_service(
     if enable:
         result = await run_ssh_command(
             server,
-            f"sudo systemctl enable --now {service_name}",
+            f"sudo systemctl enable --now {q(service_name)}",
             timeout=30
         )
     else:
         result = await run_ssh_command(
             server,
-            f"sudo systemctl start {service_name}",
+            f"sudo systemctl start {q(service_name)}",
             timeout=30
         )
 

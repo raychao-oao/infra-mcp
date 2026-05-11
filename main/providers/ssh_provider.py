@@ -13,6 +13,8 @@ import asyncio
 import os
 import subprocess
 
+from main.utils import validate_identifier
+
 
 def is_local_server(server: str) -> bool:
     """Check if the target server is the local machine."""
@@ -39,10 +41,11 @@ def run_command(
     Returns:
         subprocess.CompletedProcess with stdout, stderr, returncode
     """
+    validate_identifier(server, "server")
     if is_local_server(server):
         full_cmd = command
     else:
-        full_cmd = f"ssh {server} \"{command}\""
+        full_cmd = f"ssh {server} {command!r}"
 
     return subprocess.run(
         full_cmd,
@@ -72,10 +75,11 @@ async def async_run_command(
     Returns:
         Dict with success status, stdout, stderr
     """
+    validate_identifier(server, "server")
     if is_local_server(server):
         full_cmd = command
     else:
-        full_cmd = f"ssh {server} '{command}'"
+        full_cmd = f"ssh {server} {command!r}"
 
     try:
         proc = await asyncio.create_subprocess_shell(

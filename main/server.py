@@ -207,10 +207,9 @@ logger = logging.getLogger(__name__)
 # Exception handler for validation errors
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Log validation errors with request body for debugging."""
+    """Log validation errors with request size for debugging."""
     body = await request.body()
-    logger.error(f"Validation error for request: {body.decode()}")
-    logger.error(f"Validation errors: {exc.errors()}")
+    logger.error(f"Validation error: {len(body)} bytes, errors: {exc.errors()}")
 
     # Return JSON-RPC error response
     return JSONResponse(

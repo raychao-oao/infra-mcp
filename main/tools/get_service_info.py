@@ -14,7 +14,7 @@ from typing import Optional, Dict, Any
 
 from main.db.sqlite_store import SQLiteStore
 from main.providers.ssh_provider import run_command
-from main.utils import get_service_name
+from main.utils import get_service_name, q
 
 
 async def get_service_info(
@@ -102,13 +102,13 @@ async def get_service_info(
     if service_type in ["flask", "nodejs", "flask+static"]:
         service_name = svc_name
         try:
-            result = run_command(server, f"systemctl is-active {service_name}", timeout=5)
+            result = run_command(server, f"systemctl is-active {q(service_name)}", timeout=5)
             live_status = result.stdout.strip()  # "active", "inactive", "failed", etc.
         except Exception:
             live_status = "check_failed"
     elif service_type == "docker":
         try:
-            result = run_command(server, f"cd ~/PRJ/{project} && docker compose ps --format json", timeout=5)
+            result = run_command(server, f"cd ~/PRJ/{q(project)} && docker compose ps --format json", timeout=5)
             live_status = "running" if "running" in result.stdout.lower() else "stopped"
         except Exception:
             live_status = "check_failed"

@@ -11,7 +11,7 @@ from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
 from main.models.service_deployment import ServiceType
 from main.providers.ssh_provider import run_command
-from main.utils import get_service_name
+from main.utils import get_service_name, q
 
 
 async def get_service_logs(
@@ -109,15 +109,15 @@ async def _get_service_logs(
 
     if service_type == ServiceType.DOCKER:
         # Get Docker logs
-        cmd = f"cd ~/PRJ/{project} && docker compose logs --tail {lines}"
+        cmd = f"cd ~/PRJ/{q(project)} && docker compose logs --tail {int(lines)}"
         if since:
-            cmd += f" --since '{since}'"
+            cmd += f" --since {q(since)}"
     else:
         # Get systemd logs
         service_name = get_service_name(project, service, deployment.systemd_config)
-        cmd = f"sudo journalctl -u {service_name} -n {lines} --no-pager"
+        cmd = f"sudo journalctl -u {q(service_name)} -n {int(lines)} --no-pager"
         if since:
-            cmd += f" --since '{since}'"
+            cmd += f" --since {q(since)}"
 
     try:
         result = run_command(server, cmd, timeout=30)
@@ -158,11 +158,11 @@ async def _get_caddy_logs(server: str, lines: int, since: Optional[str] = None) 
 
     if since:
         # When filtering by time, use journalctl (supports --since)
-        cmd = f"sudo journalctl -u caddy -n {lines} --no-pager --since '{since}'"
+        cmd = f"sudo journalctl -u caddy -n {int(lines)} --no-pager --since {q(since)}"
     else:
         # Try to read Caddy access log, fallback to journalctl
         log_file = "/var/log/caddy/access.log"
-        cmd = f"sudo tail -n {lines} {log_file} 2>/dev/null || sudo journalctl -u caddy -n {lines} --no-pager"
+        cmd = f"sudo tail -n {int(lines)} {q(log_file)} 2>/dev/null || sudo journalctl -u caddy -n {int(lines)} --no-pager"
 
     try:
         result = run_command(server, cmd, timeout=30)
@@ -214,9 +214,9 @@ async def _get_tunnel_logs(server: str, lines: int, since: Optional[str] = None)
         tunnel_service = result.stdout.strip().split('\n')[0].strip()
 
         # Get tunnel logs
-        tunnel_cmd = f"sudo journalctl -u {tunnel_service} -n {lines} --no-pager"
+        tunnel_cmd = f"sudo journalctl -u {q(tunnel_service)} -n {int(lines)} --no-pager"
         if since:
-            tunnel_cmd += f" --since '{since}'"
+            tunnel_cmd += f" --since {q(since)}"
         log_result = run_command(server, tunnel_cmd, timeout=30)
 
         if log_result.returncode != 0:

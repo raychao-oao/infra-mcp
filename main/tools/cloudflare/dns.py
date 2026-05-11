@@ -12,6 +12,7 @@ import subprocess
 from typing import Any, Optional
 from main.tools.cloudflare.base import get_client, CloudflareAPIError
 from main.config import INFRA_SERVERS, INFRA_DEFAULT_SERVER
+from main.utils import q, validate_hostname
 
 
 # Valid DNS record types
@@ -107,7 +108,7 @@ async def _create_dns_via_cloudflared(
         raise CloudflareAPIError(f"Unknown server: {server}. Valid: {', '.join(VPS_SERVERS)}")
 
     # Run cloudflared tunnel route dns via SSH
-    cmd = f"ssh {server} 'cloudflared tunnel route dns {tunnel_name} {domain}'"
+    cmd = f"ssh {server} 'cloudflared tunnel route dns {q(tunnel_name)} {q(domain)}'"
 
     try:
         proc = await asyncio.create_subprocess_shell(

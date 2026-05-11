@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any
 from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
 from main.providers.ssh_provider import run_command
-from main.utils import get_service_name
+from main.utils import get_service_name, q
 
 
 async def get_caddy_config(
@@ -54,7 +54,7 @@ async def get_caddy_config(
 
     # Read config file
     try:
-        result = run_command(server, f"sudo cat {config_file} 2>/dev/null", timeout=10)
+        result = run_command(server, f"sudo cat {q(config_file)} 2>/dev/null", timeout=10)
 
         if result.returncode != 0:
             return {

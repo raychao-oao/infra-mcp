@@ -126,14 +126,21 @@ async def stop_systemd_service(
         Dict with success status
     """
 
+    from main.providers.ssh_provider import async_run_command
+    from main.utils import q
+
     try:
-        # This is a placeholder - actual implementation would SSH to server
-        # Command: sudo systemctl stop {service_name}
+        result = await async_run_command(server, f"sudo systemctl stop {q(service_name)}")
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": "STOP_FAILED",
+                "message": f"Failed to stop {service_name}: {result.get('stderr', result.get('message'))}",
+            }
         return {
             "success": True,
             "service_name": service_name,
             "message": f"Service {service_name} stopped on {server}",
-            "note": "Implementation requires SSH command execution: sudo systemctl stop {service_name}"
         }
 
     except Exception as e:

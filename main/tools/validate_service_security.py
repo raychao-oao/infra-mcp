@@ -12,7 +12,7 @@ import subprocess
 import re
 
 from main.config import INFRA_SERVERS
-from main.utils import get_service_name
+from main.utils import get_service_name, q
 from typing import Optional, Dict, Any, List
 
 from main.db.sqlite_store import SQLiteStore
@@ -133,7 +133,7 @@ async def _check_caddy_config(
     """Check if Caddy configuration has bind 127.0.0.1."""
 
     try:
-        result = run_command(server, f"sudo cat {caddy_file} 2>/dev/null", timeout=10)
+        result = run_command(server, f"sudo cat {q(caddy_file)} 2>/dev/null", timeout=10)
 
         if result.returncode != 0:
             return {
@@ -196,7 +196,7 @@ async def _fix_caddy_bind(server: str, caddy_file: str, config_content: str) -> 
             try:
                 result = run_command(
                     server,
-                    f"sudo sed -i '{i+2}i\\    bind 127.0.0.1' {caddy_file}",
+                    f"sudo sed -i '{i+2}i\\    bind 127.0.0.1' {q(caddy_file)}",
                     timeout=10
                 )
 
@@ -223,7 +223,7 @@ async def _check_docker_config(
     try:
         result = run_command(
             server,
-            f"find ~/PRJ/{project} -name 'docker-compose.y*ml' 2>/dev/null | head -1",
+            f"find ~/PRJ/{q(project)} -name 'docker-compose.y*ml' 2>/dev/null | head -1",
             timeout=10
         )
 
@@ -237,7 +237,7 @@ async def _check_docker_config(
         compose_file = result.stdout.strip()
 
         # Read docker-compose.yml
-        read_result = run_command(server, f"cat {compose_file}", timeout=10)
+        read_result = run_command(server, f"cat {q(compose_file)}", timeout=10)
 
         if read_result.returncode != 0:
             return {
@@ -316,7 +316,7 @@ async def _check_actual_port_binding(server: str, port: int) -> Dict[str, Any]:
     """Check actual port binding using ss command."""
 
     try:
-        result = run_command(server, f"sudo ss -tlnp | grep ':{port} '", timeout=10)
+        result = run_command(server, f"sudo ss -tlnp | grep ':{int(port)} '", timeout=10)
 
         if result.returncode != 0:
             return {

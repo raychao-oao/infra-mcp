@@ -256,14 +256,21 @@ async def stop_systemd_service(
         Dict with success status
     """
 
+    from main.providers.ssh_provider import async_run_command
+    from main.utils import q
+
     try:
-        # This is a placeholder - actual implementation would SSH to server
-        # Command: sudo systemctl stop {service_name}
+        result = await async_run_command(server, f"sudo systemctl stop {q(service_name)}")
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": "STOP_FAILED",
+                "message": f"Failed to stop {service_name}: {result.get('stderr', result.get('message'))}",
+            }
         return {
             "success": True,
             "service_name": service_name,
             "message": f"Service {service_name} stopped on {server}",
-            "note": "Implementation requires SSH: sudo systemctl stop {service_name}"
         }
 
     except Exception as e:
@@ -288,21 +295,28 @@ async def remove_systemd_service(
         Dict with success status
     """
 
+    from main.providers.ssh_provider import async_run_command
+    from main.utils import q
+
     try:
         service_file = f"/etc/systemd/system/{service_name}.service"
-
-        # This is a placeholder - actual implementation would SSH to server
-        # Commands:
-        # sudo systemctl disable {service_name}
-        # sudo rm {service_file}
-        # sudo systemctl daemon-reload
-
+        cmd = (
+            f"sudo systemctl disable {q(service_name)} ; "
+            f"sudo rm -f {q(service_file)} && "
+            f"sudo systemctl daemon-reload"
+        )
+        result = await async_run_command(server, cmd)
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": "REMOVE_FAILED",
+                "message": f"Failed to remove {service_name}: {result.get('stderr', result.get('message'))}",
+            }
         return {
             "success": True,
             "service_name": service_name,
             "service_file": service_file,
             "message": f"Systemd service {service_name} disabled and removed from {server}",
-            "note": "Implementation requires SSH commands"
         }
 
     except Exception as e:
@@ -327,15 +341,21 @@ async def remove_caddy_config_file(
         Dict with success status
     """
 
-    try:
-        # This is a placeholder - actual implementation would SSH to server
-        # Command: sudo rm {config_file}
+    from main.providers.ssh_provider import async_run_command
+    from main.utils import q
 
+    try:
+        result = await async_run_command(server, f"sudo rm -f {q(config_file)}")
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": "REMOVE_FAILED",
+                "message": f"Failed to remove {config_file}: {result.get('stderr', result.get('message'))}",
+            }
         return {
             "success": True,
             "config_file": config_file,
             "message": f"Caddy config file removed: {config_file}",
-            "note": "Implementation requires SSH: sudo rm {config_file}"
         }
 
     except Exception as e:
@@ -356,14 +376,19 @@ async def reload_caddy_on_server(server: str) -> Dict[str, Any]:
         Dict with success status
     """
 
-    try:
-        # This is a placeholder - actual implementation would SSH to server
-        # Command: sudo systemctl reload caddy
+    from main.providers.ssh_provider import async_run_command
 
+    try:
+        result = await async_run_command(server, "sudo systemctl reload caddy")
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": "RELOAD_FAILED",
+                "message": f"Failed to reload Caddy: {result.get('stderr', result.get('message'))}",
+            }
         return {
             "success": True,
             "message": f"Caddy reloaded on {server}",
-            "note": "Implementation requires SSH: sudo systemctl reload caddy"
         }
 
     except Exception as e:
@@ -388,15 +413,11 @@ async def remove_dns_cname_record(
         Dict with success status
     """
 
-    try:
-        # This is a placeholder - actual implementation would use Cloudflare API
+    from main.tools.cloudflare.dns import delete_dns_record
 
-        return {
-            "success": True,
-            "hostname": hostname,
-            "message": f"DNS CNAME record removed for {hostname}",
-            "note": "Implementation requires Cloudflare API call"
-        }
+    try:
+        result = await delete_dns_record(record_name=hostname)
+        return result
 
     except Exception as e:
         return {
@@ -420,15 +441,21 @@ async def remove_directory(
         Dict with success status
     """
 
-    try:
-        # This is a placeholder - actual implementation would SSH to server
-        # Command: rm -rf {path}
+    from main.providers.ssh_provider import async_run_command
+    from main.utils import q
 
+    try:
+        result = await async_run_command(server, f"rm -rf {q(path)}")
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": "REMOVE_FAILED",
+                "message": f"Failed to remove {path}: {result.get('stderr', result.get('message'))}",
+            }
         return {
             "success": True,
             "path": path,
             "message": f"Directory removed: {path}",
-            "note": "Implementation requires SSH: rm -rf {path}"
         }
 
     except Exception as e:
