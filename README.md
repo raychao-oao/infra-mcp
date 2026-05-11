@@ -7,9 +7,9 @@ Centralized infrastructure resource management with MCP (Model Context Protocol)
 ## 📋 專案資訊
 
 - **專案類型**: Infrastructure as Code / MCP Server
-- **開發狀態**: In Development
-- **版本**: v0.1.0
-- **最後更新**: 2025-12-28
+- **開發狀態**: Active
+- **版本**: v1.0.0
+- **最後更新**: 2026-05-11
 
 ## 🌐 管理的基礎設施
 
@@ -70,7 +70,7 @@ curl -X POST http://localhost:8000/mcp \
 # Register a Cloudflare Tunnel
 curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"register_main_tunnel","arguments":{"server":"prod","tunnel_name":"my-app","tunnel_id":"<tunnel-id>"}}}'
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"register_main_tunnel","arguments":{"vps_server":"prod","tunnel_name":"my-app","cloudflare_tunnel_id":"<tunnel-id>"}}}'
 
 # Deploy a service
 curl -X POST http://localhost:8000/mcp \
@@ -82,9 +82,9 @@ curl -X POST http://localhost:8000/mcp \
 
 ### Current Deployment
 
-**Server**: prod.your-domain.com (your VPS provider)
-**Endpoint**: https://infra.your-domain.com
-**Status**: ✅ Live (deployed 2025-12-28)
+**Server**: your-server (SSH alias configured in `~/.ssh/config`)
+**Endpoint**: https://infra.your-domain.com (behind Cloudflare Access)
+**Status**: Deploy to your own infrastructure using the setup in `deploy/`
 
 **Architecture**:
 ```
@@ -179,10 +179,10 @@ source ~/.zshrc
 **方法 1: 使用便利腳本 (推薦)**
 
 ```bash
-# 1. 複製客戶端檔案到你的專案
-curl -O https://raw.githubusercontent.com/.../examples/infra_client.py
-curl -O https://raw.githubusercontent.com/.../examples/new_project_setup.py
-chmod +x new_project_setup.py
+# 1. 複製客戶端範例到你的專案（從本 repo 的 examples/ 目錄）
+cp examples/infra_client.py your-project/
+cp examples/new_project_setup.py your-project/
+chmod +x your-project/new_project_setup.py
 
 # 2. 執行設定 (互動模式)
 ./new_project_setup.py
@@ -314,10 +314,10 @@ infra-mcp/
 ## 🛠️ 技術棧
 
 **MCP Server**
-- Python 3.11+ (MCP server implementation)
-- Model Context Protocol (MCP) SDK
-- JSON-based resource database (Phase 1)
-- Future: PostgreSQL/SQLite (Phase 2+)
+- Python 3.11+
+- FastAPI (HTTP server, JSON-RPC 2.0 transport)
+- SQLite + SQLAlchemy (resource database)
+- asyncssh / subprocess (SSH command execution)
 
 **Infrastructure Management**
 - Cloudflare API (DNS, Tunnels, Access)
@@ -339,22 +339,11 @@ infra-mcp/
 - [`docs/Architecture.md`](./docs/Architecture.md) - MCP Server 完整架構設計
 - [`docs/MCP-API.md`](./docs/MCP-API.md) - MCP Tools API 規格與使用範例
 - [`docs/Data-Models.md`](./docs/Data-Models.md) - 資源資料模型定義
-- [`docs/Implementation-Plan.md`](./docs/Implementation-Plan.md) - 三階段實作計畫
-
-## 👥 團隊
-
-- **Project Lead**: [Name] ([email])
-- **Technical Lead**: [Name] ([email])
-- **Contributors**: [列出貢獻者]
-
 ## 📄 License
 
-[License Type] - See [LICENSE](./LICENSE) file for details.
+MIT License — see [LICENSE](./LICENSE) file for details.
 
-## 🔗 相關連結
-
-- [External Resource 1](URL)
-- [External Resource 2](URL)
+## 🔗 相關資源
 
 ---
 

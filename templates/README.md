@@ -176,7 +176,6 @@ Environment="HOST=127.0.0.1"  # ✅ 正確
 ## 參考資源
 
 - [Infrastructure MCP Security Tools Guide](../docs/security-tools-guide.md)
-- [PROJECT.md](../PROJECT.md)
 - [Zero Trust Architecture](https://www.cloudflare.com/learning/security/glossary/what-is-zero-trust/)
 
 ---

@@ -203,5 +203,5 @@ chmod 644 infrastructure.db
 
 ---
 
-**更新時間**: 2026-02-04
-**適用版本**: Infrastructure MCP Server v2.0
+**更新時間**: 2026-05-11
+**適用版本**: Infrastructure Management MCP v1.0.0
