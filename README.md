@@ -78,6 +78,22 @@ curl -X POST http://localhost:8000/mcp \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"deploy_service","arguments":{"project":"my-app","service":"web","server":"prod"}}}'
 ```
 
+## 🔒 Security
+
+> **Warning**: The `/mcp` endpoint executes SSH commands on your servers. It **must** be protected by authentication before exposure to any network.
+
+**The server binds to `127.0.0.1` by default** — it should not be directly reachable from the internet. The recommended deployment pattern is:
+
+```
+Internet → Cloudflare Access (auth) → Cloudflare Tunnel → localhost:8000/mcp
+```
+
+Any reverse proxy with authentication works: Cloudflare Access, nginx + auth, Tailscale, etc.
+
+**Never expose `/mcp` without authentication.**
+
+---
+
 ## 🚢 Production Deployment
 
 ### Current Deployment

@@ -274,6 +274,10 @@ async def health_check():
     }
 
 
+class InvalidParamsError(Exception):
+    """Raised for JSON-RPC -32602 Invalid Params errors."""
+
+
 # Pydantic models for JSON-RPC 2.0 / MCP protocol
 class JSONRPCRequest(BaseModel):
     """JSON-RPC 2.0 Request format."""
@@ -1289,13 +1293,23 @@ async def mcp_endpoint(request: JSONRPCRequest):
             tool_name = params.get("name")
             arguments = params.get("arguments", {})
 
+            if not tool_name:
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "jsonrpc": "2.0",
+                        "id": request.id,
+                        "error": {"code": -32602, "message": "Missing required parameter: name"}
+                    }
+                )
+
             # Execute the requested tool
             result = None
 
             if tool_name == "allocate_port":
                 is_valid, error_msg = await validate_allocate_port_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await allocate_port(
                     store=store,
@@ -1309,7 +1323,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "list_resources":
                 is_valid, error_msg = await validate_list_resources_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await list_resources(
                     store=store,
@@ -1323,7 +1337,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "register_main_tunnel":
                 is_valid, error_msg = await validate_register_main_tunnel_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await register_main_tunnel(
                     store=store,
@@ -1340,7 +1354,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "list_main_tunnels":
                 is_valid, error_msg = await validate_list_main_tunnels_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await list_main_tunnels(
                     store=store,
@@ -1351,7 +1365,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "release_port":
                 is_valid, error_msg = await validate_release_port_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await release_port(
                     store=store,
@@ -1362,7 +1376,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "register_service":
                 is_valid, error_msg = await validate_register_service_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await register_service(
                     store=store,
@@ -1387,7 +1401,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "deploy_service":
                 is_valid, error_msg = await validate_deploy_service_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await deploy_service(
                     store=store,
@@ -1401,7 +1415,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "stop_service":
                 is_valid, error_msg = await validate_stop_service_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await stop_service(
                     store=store,
@@ -1413,7 +1427,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "purge_service":
                 is_valid, error_msg = await validate_purge_service_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await purge_service(
                     store=store,
@@ -1430,7 +1444,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "upgrade_service":
                 is_valid, error_msg = await validate_upgrade_service_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await upgrade_service(
                     store=store,
@@ -1445,7 +1459,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "get_service_info":
                 is_valid, error_msg = await validate_get_service_info_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await get_service_info(
                     store=store,
@@ -1458,7 +1472,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "check_listening_ports":
                 is_valid, error_msg = await validate_check_listening_ports_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await check_listening_ports(
                     store=store,
@@ -1469,7 +1483,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "validate_service_security":
                 is_valid, error_msg = await validate_validate_service_security_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await validate_service_security(
                     store=store,
@@ -1482,7 +1496,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "audit_all_services":
                 is_valid, error_msg = await validate_audit_all_services_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await audit_all_services(
                     store=store,
@@ -1493,7 +1507,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "restart_service":
                 is_valid, error_msg = await validate_restart_service_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await restart_service(
                     store=store,
@@ -1506,7 +1520,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "get_caddy_config":
                 is_valid, error_msg = await validate_get_caddy_config_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await get_caddy_config(
                     store=store,
@@ -1518,7 +1532,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "get_tunnel_config":
                 is_valid, error_msg = await validate_get_tunnel_config_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await get_tunnel_config(
                     store=store,
@@ -1528,7 +1542,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "get_service_logs":
                 is_valid, error_msg = await validate_get_service_logs_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await get_service_logs(
                     store=store,
@@ -1543,7 +1557,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "check_service_health":
                 is_valid, error_msg = await validate_check_service_health_input(arguments)
                 if not is_valid:
-                    raise Exception(f"Validation error: {error_msg}")
+                    raise InvalidParamsError(error_msg)
 
                 result = await check_service_health(
                     store=store,
@@ -1557,28 +1571,28 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "create_dns_record":
                 validation = validate_create_dns_record_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await create_dns_record(**arguments)
 
             elif tool_name == "update_dns_record":
                 validation = validate_update_dns_record_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await update_dns_record(**arguments)
 
             elif tool_name == "delete_dns_record":
                 validation = validate_delete_dns_record_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await delete_dns_record(**arguments)
 
             elif tool_name == "list_dns_records":
                 validation = validate_list_dns_records_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await list_dns_records(**arguments)
 
@@ -1586,28 +1600,28 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "create_access_application":
                 validation = validate_create_access_application_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await create_access_application(**arguments)
 
             elif tool_name == "delete_access_application":
                 validation = validate_delete_access_application_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await delete_access_application(**arguments)
 
             elif tool_name == "list_access_applications":
                 validation = validate_list_access_applications_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await list_access_applications(**arguments)
 
             elif tool_name == "list_access_policies":
                 validation = validate_list_access_policies_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await list_access_policies(**arguments)
 
@@ -1615,28 +1629,28 @@ async def mcp_endpoint(request: JSONRPCRequest):
             elif tool_name == "create_cloudflare_tunnel":
                 validation = validate_create_cloudflare_tunnel_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await create_cloudflare_tunnel(**arguments)
 
             elif tool_name == "delete_cloudflare_tunnel":
                 validation = validate_delete_cloudflare_tunnel_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await delete_cloudflare_tunnel(**arguments)
 
             elif tool_name == "list_cloudflare_tunnels":
                 validation = validate_list_cloudflare_tunnels_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await list_cloudflare_tunnels(**arguments)
 
             elif tool_name == "get_tunnel_token":
                 validation = validate_get_tunnel_token_input(arguments)
                 if not validation.get("valid"):
-                    raise Exception(f"Validation error: {validation.get('errors')}")
+                    raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await get_tunnel_token(**arguments)
 
@@ -1672,7 +1686,17 @@ async def mcp_endpoint(request: JSONRPCRequest):
                 )
 
             else:
-                raise Exception(f"Unknown tool: {tool_name}")
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "jsonrpc": "2.0",
+                        "id": request.id,
+                        "error": {
+                            "code": -32601,  # Method not found
+                            "message": f"Unknown tool: {tool_name}"
+                        }
+                    }
+                )
 
             # Format result for MCP - return full JSON data so AI clients can parse it
             text_content = json.dumps(result, default=str)
@@ -1691,19 +1715,36 @@ async def mcp_endpoint(request: JSONRPCRequest):
 
         # Unknown method
         else:
-            raise Exception(f"Unknown method: {method}")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "jsonrpc": "2.0",
+                    "id": request.id,
+                    "error": {
+                        "code": -32601,  # Method not found
+                        "message": f"Method not found: {method}"
+                    }
+                }
+            )
 
-    except Exception as e:
-        # Return JSON-RPC error response
-        error_response = {
-            "jsonrpc": "2.0",
-            "id": request.id if hasattr(request, 'id') else None,
-            "error": {
-                "code": -32603,  # Internal error
-                "message": str(e)
+    except InvalidParamsError as e:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "jsonrpc": "2.0",
+                "id": request.id if hasattr(request, 'id') else None,
+                "error": {"code": -32602, "message": str(e)}
             }
-        }
-        return JSONResponse(status_code=200, content=error_response)
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "jsonrpc": "2.0",
+                "id": request.id if hasattr(request, 'id') else None,
+                "error": {"code": -32603, "message": str(e)}
+            }
+        )
 
 
 if __name__ == "__main__":
