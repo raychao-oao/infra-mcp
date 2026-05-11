@@ -14,12 +14,12 @@ Centralized infrastructure resource management with MCP (Model Context Protocol)
 ## 🌐 管理的基礎設施
 
 ### VPS Servers
-- **asablue.oao.tw** - Production (Netcup RS 1000 G12, Germany)
+- **prod.your-domain.com** - Production (Netcup RS 1000 G12, Germany)
 - [Future servers...]
 
 ### Cloudflare Services
-- **Domains**: oao.tw, nowhere.tw
-- **Tunnels**: pac, sandbox [+ future tunnels]
+- **Domains**: your-domain.com
+- **Tunnels**: app, sandbox [+ future tunnels]
 - **Services**: DNS, CDN, Access, Pages, Workers, R2
 
 ### Resource Allocation
@@ -41,7 +41,7 @@ Centralized infrastructure resource management with MCP (Model Context Protocol)
 ```bash
 # 1. Clone the repository
 git clone <repository-url>
-cd oao-infra
+cd infra-mcp
 
 # 2. Install Python dependencies
 pip install -r requirements.txt
@@ -72,13 +72,13 @@ python main/mcp_server.py
 <use MCP tool: register_tunnel>
   project: "my-app"
   tunnel_name: "myapp"
-  hostname: "myapp.nowhere.tw"
+  hostname: "myapp.your-domain.com"
   target_port: 3000
 
 # Deploy to VPS
 <use MCP tool: deploy_to_vps>
   project: "my-app"
-  server: "asablue"
+  server: "prod"
   service_type: "flask"
 ```
 
@@ -86,15 +86,15 @@ python main/mcp_server.py
 
 ### Current Deployment
 
-**Server**: asablue.oao.tw (Netcup RS 1000 G12, Germany)
-**Endpoint**: https://infra.nowhere.tw
+**Server**: prod.your-domain.com (Netcup RS 1000 G12, Germany)
+**Endpoint**: https://infra.your-domain.com
 **Status**: ✅ Live (deployed 2025-12-28)
 
 **Architecture**:
 ```
 Internet
     ↓
-Cloudflare Access (OAO Policy)
+Cloudflare Access (Access Policy)
     ↓
 Cloudflare Tunnel (infra-mcp)
     ↓
@@ -120,8 +120,8 @@ SQLite Database
 ./deploy/deploy.sh
 
 # 3. SSH to server and configure environment
-ssh jcchao@asablue.oao.tw
-cd /home/jcchao/PRJ/oao-infra
+ssh YOUR_USER@prod.your-domain.com
+cd /home/YOUR_USER/infra-mcp
 nano .env  # Add production credentials
 
 # 4. Start services
@@ -134,27 +134,27 @@ sudo systemctl status infra-mcp
 # Config: ~/.cloudflared/config-infra-mcp.yml
 
 # 6. Configure Cloudflare Access
-# Access is configured via API to use OAO reusable policy
-# Policy allows: ray.chao@oao.tw
+# Access is configured via API to use a reusable policy
+# Policy allows: your@email.com
 
 # 7. Verify deployment
-curl -I https://infra.nowhere.tw
+curl -I https://infra.your-domain.com
 # Should return HTTP 302 (redirect to Cloudflare Access login)
 ```
 
 ### Access the MCP Server
 
 **Prerequisites**:
-- Authenticated with Cloudflare Access (allowed email: ray.chao@oao.tw)
+- Authenticated with Cloudflare Access (allowed email: your@email.com)
 - Valid session cookie or Service Token
 
 **Test Endpoints**:
 ```bash
 # Health check
-curl https://infra.nowhere.tw/health
+curl https://infra.your-domain.com/health
 
 # MCP endpoint (requires authentication)
-curl -X POST https://infra.nowhere.tw/mcp \
+curl -X POST https://infra.your-domain.com/mcp \
   -H "Content-Type: application/json" \
   -H "CF-Access-Client-Id: YOUR_CLIENT_ID" \
   -H "CF-Access-Client-Secret: YOUR_CLIENT_SECRET" \
@@ -195,7 +195,7 @@ chmod +x new_project_setup.py
 ./new_project_setup.py setup \
   --project my-app \
   --service web \
-  --hostname myapp.nowhere.tw \
+  --hostname myapp.your-domain.com \
   --port 5000
 ```
 
@@ -213,7 +213,7 @@ chmod +x new_project_setup.py
      "mcpServers": {
        "infrastructure": {
          "type": "http",
-         "url": "https://infra.nowhere.tw/mcp",
+         "url": "https://infra.your-domain.com/mcp",
          "headers": {
            "Content-Type": "application/json",
            "CF-Access-Client-Id": "YOUR_CLIENT_ID",
@@ -263,7 +263,7 @@ asyncio.run(main())
 
 ```bash
 # SSH to server
-ssh jcchao@asablue.oao.tw
+ssh YOUR_USER@prod.your-domain.com
 
 # Service management
 sudo systemctl status infra-mcp
@@ -279,13 +279,13 @@ sudo systemctl status cloudflared-infra-mcp
 sudo systemctl restart cloudflared-infra-mcp
 
 # Database location
-ls -la /home/jcchao/PRJ/oao-infra/configs/resources.db
+ls -la /home/YOUR_USER/infra-mcp/configs/resources.db
 ```
 
 ## 🏗️ 專案架構
 
 ```
-oao-infra/
+infra-mcp/
 ├── main/                      # MCP server 主程式
 │   ├── mcp_server.py          # MCP server 入口
 │   ├── tools/                 # MCP tools 實作

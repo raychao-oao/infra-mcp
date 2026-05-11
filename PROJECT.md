@@ -12,14 +12,14 @@
 
 OAO Infrastructure Management 是一個基於 MCP (Model Context Protocol) 的集中式基礎設施資源管理系統。透過 **31 個標準化的 MCP tools**，讓所有專案都能透過 Claude Code 統一申請和管理基礎設施資源，包括：
 
-- **VPS 伺服器**: 管理 4 台 VPS（asablue, pulongon, hello, world）
+- **VPS 伺服器**: 管理 4 台 VPS（prod, staging, dev1, dev2）
 - **Service Deployment**: Flask/Node.js/Static/Docker 服務部署
 - **Security Tools**: 全面的安全審計與驗證工具
 - **Cloudflare Integration**: DNS、Tunnel、Access 完整管理
 - **Port 分配**: 中央管理 port pool（3000-9999）
-- **Domain 管理**: 統一管理 subdomain 分配（oao.tw, nowhere.tw）
+- **Domain 管理**: 統一管理 subdomain 分配（your-domain.com）
 
-**目標使用者**: OAO 內部所有需要基礎設施資源的專案（透過 Claude Code 或 MCP 客戶端操作）
+**目標使用者**: 所有需要基礎設施資源的專案（透過 Claude Code 或 MCP 客戶端操作）
 
 **核心價值**: Zero Trust 架構、避免資源衝突、標準化部署流程、完整安全審計、可追溯性
 
@@ -29,42 +29,41 @@ OAO Infrastructure Management 是一個基於 MCP (Model Context Protocol) 的�
 
 ### VPS Servers (4 台)
 
-**asablue** (Production)
+**prod** (Production)
 - Provider: Netcup RS 1000 G12 (Germany)
 - Specs: AMD EPYC 9645 (4 cores), 7.8GB RAM, 256GB NVMe
 - OS: Debian 13 (trixie)
-- Access: `ssh asablue` (configured in ~/.ssh/config, IP: 159.195.71.62)
+- Access: `ssh prod` (configured in ~/.ssh/config, IP: YOUR_SERVER_IP)
 - Security: Only port 22 open, full Cloudflare Tunnel architecture
 - Services: Infrastructure MCP Server (systemd: infra-mcp.service)
 
-**pulongon** (Dev/ARM)
+**staging** (Dev/ARM)
 - Provider: Oracle Cloud JP
 - Specs: ARM-based (4 cores), 23GB RAM, 210GB
-- Access: `ssh pulongon`
+- Access: `ssh staging`
 - Purpose: ARM architecture testing
 
-**hello** (Dev/x86)
+**dev1** (Dev/x86)
 - Provider: Oracle Cloud JP
 - Specs: x86 (2 cores), 1GB RAM, 47GB
-- Access: `ssh hello`
+- Access: `ssh dev1`
 - Purpose: Lightweight service testing
 
-**world** (Dev/x86)
+**dev2** (Dev/x86)
 - Provider: Oracle Cloud JP
 - Specs: x86 (2 cores), 1GB RAM, 45GB
-- Access: `ssh world`
+- Access: `ssh dev2`
 - Purpose: Lightweight service testing
 
 ### Cloudflare Services
 
 **Managed Domains**:
-- `oao.tw` - Primary domain
-- `nowhere.tw` - Development/internal services
+- `your-domain.com` - Primary domain
 
 **Active Tunnels**:
-- pac.nowhere.tw → localhost:8080 (asablue)
-- sandbox.nowhere.tw → localhost:5000 (asablue)
-- infra.nowhere.tw → localhost:8000 (asablue) - Infrastructure MCP Server
+- app.your-domain.com → localhost:8080 (prod)
+- sandbox.your-domain.com → localhost:5000 (prod)
+- infra.your-domain.com → localhost:8000 (prod) - Infrastructure MCP Server
 
 **Cloudflare Features Integrated**:
 - DNS Management (full CRUD via API)
@@ -93,13 +92,13 @@ Resource Manager → JSON Database
         ↓
     ┌───┴───┐
     ↓       ↓
-asablue  Cloudflare API
+prod  Cloudflare API
 ```
 
 ### Directory Structure
 
 ```
-oao-infra/
+infra-mcp/
 ├── main/                      # MCP server 主程式
 │   ├── mcp_server.py          # MCP server 入口
 │   ├── tools/                 # MCP tools 實作
@@ -219,7 +218,7 @@ oao-infra/
 - Framework: FastAPI (MCP over HTTP with SSE)
 - Protocol: MCP Tools via HTTP POST + Server-Sent Events
 - Storage: **SQLite** (infrastructure.db) - 已從 JSON 升級
-- Deployment: systemd service (infra-mcp.service on asablue)
+- Deployment: systemd service (infra-mcp.service on prod)
 - Port: 8000 (bound to 127.0.0.1, exposed via Cloudflare Tunnel)
 
 **Infrastructure Management**
@@ -257,14 +256,14 @@ oao-infra/
 **Prerequisites**:
 - Python 3.11+ installed
 - Access to Cloudflare account (API token)
-- SSH access to asablue VPS
+- SSH access to production VPS
 - Claude Desktop (for MCP integration testing)
 
 **Installation**:
 ```bash
 # 1. Clone repository
 git clone <repository-url>
-cd oao-infra
+cd infra-mcp
 
 # 2. Create virtual environment
 python3.11 -m venv venv
@@ -290,7 +289,7 @@ cp .env.example .env
   "mcpServers": {
     "infrastructure": {
       "command": "python",
-      "args": ["/Users/jcchao/PROJECTS/oao-infra/main/mcp_server.py"]
+      "args": ["/Users/YOUR_USER/infra-mcp/main/mcp_server.py"]
     }
   }
 }
@@ -301,7 +300,7 @@ cp .env.example .env
 **本地開發與測試**:
 ```bash
 # 1. 啟動虛擬環境
-cd ~/PROJECTS/oao-infra
+cd ~/infra-mcp
 source venv/bin/activate
 
 # 2. 本地啟動 MCP server（開發測試）
@@ -339,20 +338,20 @@ git add main/tools/new_tool.py main/server.py
 git commit -m "feat: implement new_tool"
 ```
 
-**部署到 asablue（生產環境）**:
+**部署到 prod（生產環境）**:
 ```bash
 # 1. 同步程式碼
 rsync -av --delete \
     --exclude 'venv/' --exclude '__pycache__/' --exclude '*.pyc' \
     --exclude 'logs/' --exclude 'infrastructure.db' \
-    ~/PROJECTS/oao-infra/ asablue:~/oao-infra/
+    ~/infra-mcp/ prod:~/infra-mcp/
 
 # 2. 重啟服務
-ssh asablue 'sudo systemctl restart infra-mcp'
+ssh prod 'sudo systemctl restart infra-mcp'
 
 # 3. 驗證部署
-ssh asablue 'systemctl status infra-mcp'
-ssh asablue 'sudo journalctl -u infra-mcp -n 50'
+ssh prod 'systemctl status infra-mcp'
+ssh prod 'sudo journalctl -u infra-mcp -n 50'
 
 # 4. 測試 tools 數量
 curl -s http://localhost:8000/tools/list | jq '.tools | length'
@@ -369,8 +368,8 @@ curl -s http://localhost:8000/tools/list | jq '.tools | length'
 # 5. validate_service_security（驗證安全性）
 
 # SSH 驗證
-ssh asablue 'systemctl status <project>-<service>'
-ssh asablue 'sudo cat /etc/caddy/sites/<project>-<service>.caddy'
+ssh prod 'systemctl status <project>-<service>'
+ssh prod 'sudo cat /etc/caddy/sites/<project>-<service>.caddy'
 curl https://<hostname>
 ```
 
@@ -399,7 +398,7 @@ git push origin [branch]
 - **Authentication**: Cloudflare Access（Email authentication, IP restrictions）
 - **HTTPS**: Cloudflare Tunnel TLS 加密
 - **No Public Ports**: 除 SSH (22) 外無任何 port 對外開放
-- **Access Control**: infra.nowhere.tw 受 Cloudflare Access 保護
+- **Access Control**: infra.your-domain.com 受 Cloudflare Access 保護
 
 ### Service Security
 - **Docker**: 強制 127.0.0.1 port binding（templates/docker-compose.secure.yml）
@@ -437,7 +436,7 @@ git push origin [branch]
 - Secure configuration templates
 - Future enhancements documentation
 
-**Current Status**: 31 MCP tools deployed and operational on asablue
+**Current Status**: 31 MCP tools deployed and operational on prod
 
 **Pending Work**: Task #10 - Database schema extension for security tracking (documented in docs/future-enhancements.md)
 
@@ -446,19 +445,19 @@ git push origin [branch]
 ## 👥 Infrastructure Access
 
 **VPS Servers**:
-- asablue: `ssh asablue` (Production MCP Server)
-- pulongon: `ssh pulongon` (Dev/ARM)
-- hello: `ssh hello` (Dev/x86)
-- world: `ssh world` (Dev/x86)
+- prod: `ssh prod` (Production MCP Server)
+- staging: `ssh staging` (Dev/ARM)
+- dev1: `ssh dev1` (Dev/x86)
+- dev2: `ssh dev2` (Dev/x86)
 
 **MCP Server**:
-- URL: https://infra.nowhere.tw (Cloudflare Access protected)
+- URL: https://infra.your-domain.com (Cloudflare Access protected)
 - Local: http://localhost:8000 (when testing)
-- Database: ~/oao-infra/infrastructure.db (SQLite on asablue)
+- Database: ~/infra-mcp/infrastructure.db (SQLite on prod)
 
 **Cloudflare**:
 - Dashboard: https://dash.cloudflare.com
-- Managed Domains: oao.tw, nowhere.tw
+- Managed Domains: your-domain.com
 - API: Integrated in MCP tools
 
 ---
@@ -479,7 +478,7 @@ git push origin [branch]
 **操作指南**:
 - [`docs/security-tools-guide.md`](docs/security-tools-guide.md) - 安全工具使用指南（8 tools）
 - [`docs/MCP-Client-Setup.md`](docs/MCP-Client-Setup.md) - MCP 客戶端設定
-- [`docs/deployment-plan-pulongon.md`](docs/deployment-plan-pulongon.md) - Pulongon 部署計畫
+
 
 **開發資源**:
 - [`docs/documentation-standards.md`](docs/documentation-standards.md) - 文檔撰寫標準
@@ -501,7 +500,7 @@ git push origin [branch]
 - 完成 Zero Trust 安全架構
 - 新增 8 個安全工具（檢查、驗證、審計）
 - 完成 Cloudflare 完整整合（DNS, Tunnel, Access）
-- 支援 4 台 VPS（asablue, pulongon, hello, world）
+- 支援 4 台 VPS（prod, staging, dev1, dev2）
 - 新增完整文檔（10 個 MD 檔案）
 
 ### 2025-12-28 - v1.0 (Initial)

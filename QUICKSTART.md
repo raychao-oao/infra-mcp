@@ -11,8 +11,8 @@
 ```bash
 # Clone 專案（如果還沒有）
 cd ~/PROJECTS
-git clone <repository-url> oao-infra
-cd oao-infra
+git clone <repository-url> infra-mcp
+cd infra-mcp
 
 # 建立虛擬環境
 python3.11 -m venv venv
@@ -58,7 +58,7 @@ curl -X POST http://localhost:8000/tools/call \
 # 4. 測試 allocate_port
 curl -X POST http://localhost:8000/tools/call \
   -H "Content-Type: application/json" \
-  -d '{"tool":"allocate_port","arguments":{"project":"test","service":"demo","server":"asablue"}}' | jq
+  -d '{"tool":"allocate_port","arguments":{"project":"test","service":"demo","server":"prod"}}' | jq
 ```
 
 ---
@@ -73,12 +73,12 @@ curl -X POST http://localhost:8000/tools/call \
   -d '{"tool":"list_resources","arguments":{"resource_type":"ports"}}' | jq
 ```
 
-### 檢查 asablue 的安全狀態
+### 檢查 prod 的安全狀態
 
 ```bash
 curl -X POST http://localhost:8000/tools/call \
   -H "Content-Type: application/json" \
-  -d '{"tool":"audit_all_services","arguments":{"server":"asablue"}}' | jq
+  -d '{"tool":"audit_all_services","arguments":{"server":"prod"}}' | jq
 ```
 
 ### 列出所有已註冊的主 Tunnels
@@ -95,7 +95,7 @@ curl -X POST http://localhost:8000/tools/call \
 # 查看特定服務的詳細資訊
 curl -X POST http://localhost:8000/tools/call \
   -H "Content-Type: application/json" \
-  -d '{"tool":"get_service_info","arguments":{"project":"pac","service":"dashboard","server":"asablue"}}' | jq
+  -d '{"tool":"get_service_info","arguments":{"project":"pac","service":"dashboard","server":"prod"}}' | jq
 ```
 
 ---
@@ -111,7 +111,7 @@ curl -X POST http://localhost:8000/tools/call \
   "mcpServers": {
     "infrastructure": {
       "command": "python",
-      "args": ["/Users/jcchao/PROJECTS/oao-infra/main/server.py"]
+      "args": ["/Users/YOUR_USER/infra-mcp/main/server.py"]
     }
   }
 }
@@ -124,8 +124,8 @@ curl -X POST http://localhost:8000/tools/call \
 Claude Code 會自動載入專案的 MCP server（如果在 `claude_desktop_config.json` 中設定）。
 
 直接在對話中要求：
-- "幫我在 asablue 上分配一個 port 給 test-api"
-- "檢查 asablue 的安全狀態"
+- "幫我在 prod 上分配一個 port 給 test-api"
+- "檢查 prod 的安全狀態"
 - "列出所有已部署的服務"
 
 ---
@@ -196,8 +196,7 @@ chmod 644 infrastructure.db
 - 參考 [`CLAUDE.md`](CLAUDE.md) 了解 AI 協作工作流
 
 **生產部署**:
-- 查看 [`docs/deployment-plan-pulongon.md`](docs/deployment-plan-pulongon.md)
-- SSH 到 asablue: `ssh asablue`
+- SSH 到 prod: `ssh prod`
 - 檢查生產狀態: `systemctl status infra-mcp`
 
 ---
