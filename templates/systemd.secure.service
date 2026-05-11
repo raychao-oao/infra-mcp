@@ -1,0 +1,43 @@
+# Secure Systemd Service Template
+# File: /etc/systemd/system/${PROJECT}-${SERVICE}.service
+
+[Unit]
+Description=${PROJECT} ${SERVICE} Service
+After=network.target
+
+[Service]
+Type=simple
+User=jcchao
+Group=jcchao
+WorkingDirectory=/home/jcchao/PRJ/${PROJECT}
+
+# IMPORTANT: Set HOST to 127.0.0.1 for Zero Trust
+Environment="HOST=127.0.0.1"
+Environment="PORT=${APP_PORT}"
+Environment="NODE_ENV=production"
+
+# Flask example with Gunicorn
+ExecStart=/home/jcchao/PRJ/${PROJECT}/venv/bin/gunicorn \
+    --bind 127.0.0.1:${APP_PORT} \
+    --workers 4 \
+    --timeout 120 \
+    app:app
+
+# Node.js example
+# ExecStart=/usr/bin/node server.js
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=${PROJECT}-${SERVICE}
+
+[Install]
+WantedBy=multi-user.target

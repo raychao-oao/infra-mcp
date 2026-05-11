@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+*.db
+*.sqlite
+*.sqlite3
+logs/
+*.log
+server.log
+.DS_Store
+docs/superpowers/
+docs/ai_collaboration/

@@ -1,0 +1,47 @@
+# Secure Caddy Configuration Template
+# IMPORTANT: Always include 'bind 127.0.0.1' directive
+
+# Service-specific site configuration
+${HOSTNAME}:80 {
+    # CRITICAL: Bind to localhost only (required for Zero Trust)
+    bind 127.0.0.1
+
+    # Reverse proxy to application
+    reverse_proxy localhost:${APP_PORT}
+
+    # Optional: Access logging
+    log {
+        output file /var/log/caddy/${PROJECT}-${SERVICE}.log
+        format json
+    }
+
+    # Optional: Custom error pages
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+}
+
+# Static files example
+# ${HOSTNAME}:80 {
+#     bind 127.0.0.1
+#     root * /var/www/${PROJECT}
+#     file_server
+#     encode gzip
+# }
+
+# Flask + Static example
+# ${HOSTNAME}:80 {
+#     bind 127.0.0.1
+#
+#     # API requests to Flask
+#     handle /api/* {
+#         reverse_proxy localhost:${APP_PORT}
+#     }
+#
+#     # Static files
+#     handle /* {
+#         root * /var/www/${PROJECT}
+#         try_files {path} /index.html
+#         file_server
+#     }
+# }

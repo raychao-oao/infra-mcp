@@ -1,0 +1,9 @@
+請生成 Architecture Decision Record (ADR) 文檔。
+
+專案位置：{{PROJECT_ROOT}}
+
+請包含：
+1. Status: 狀態（Proposed/Accepted/Deprecated）
+2. Context: 背景與問題
+3. Decision: 決策內容
+4. Consequences: 結果與影響

@@ -1,0 +1,46 @@
+:8001 {
+    # Reverse proxy to FastAPI app
+    reverse_proxy localhost:8000
+
+    # Logging
+    log {
+        output file /var/log/caddy/infra-mcp.log
+        format json
+    }
+
+    # Rate limiting (optional)
+    # rate_limit {
+    #     zone infra_mcp {
+    #         key {remote_host}
+    #         events 100
+    #         window 1m
+    #     }
+    # }
+
+    # Headers
+    header {
+        # Security headers
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "strict-origin-when-cross-origin"
+
+        # Remove server info
+        -Server
+    }
+
+    # Health check endpoint (bypass proxy)
+    handle /health {
+        reverse_proxy localhost:8000
+    }
+
+    # MCP endpoint
+    handle /mcp {
+        reverse_proxy localhost:8000
+    }
+
+    # All other routes
+    handle {
+        reverse_proxy localhost:8000
+    }
+}

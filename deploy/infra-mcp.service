@@ -1,0 +1,27 @@
+[Unit]
+Description=Infrastructure MCP Server
+After=network.target
+
+[Service]
+Type=simple
+# Replace YOUR_USER with your system username
+User=YOUR_USER
+Group=YOUR_USER
+# Replace with your actual project path
+WorkingDirectory=/home/YOUR_USER/infra-mcp
+Environment="PATH=/home/YOUR_USER/infra-mcp/venv/bin:/usr/local/bin:/usr/bin:/bin"
+# Set INFRA_LOCAL_SERVER to the SSH alias of this machine (so local commands bypass SSH)
+Environment="INFRA_LOCAL_SERVER=prod"
+EnvironmentFile=/home/YOUR_USER/infra-mcp/.env
+ExecStart=/home/YOUR_USER/infra-mcp/venv/bin/uvicorn main.server:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=always
+RestartSec=10
+
+# Security settings
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/YOUR_USER/infra-mcp/configs
+
+[Install]
+WantedBy=multi-user.target
