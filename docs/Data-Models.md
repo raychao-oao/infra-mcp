@@ -35,7 +35,7 @@
   "allocation_id": "alloc_20251228_120530_001",
   "resource_type": "port",
   "port": 3000,
-  "project": "evo-ai-mvp",
+  "project": "my-app",
   "service": "web-server",
   "server": "prod",
   "allocated_at": "2025-12-28T12:05:30Z",
@@ -78,24 +78,24 @@ CREATE INDEX idx_status ON port_allocations(status);
 ```json
 {
   "tunnel_id": "tunnel_20251228_120600_001",
-  "tunnel_name": "evo",
+  "tunnel_name": "my-app",
   "cloudflare_tunnel_id": "abc123-def456-789ghi-jklmno",
-  "project": "evo-ai-mvp",
-  "hostname": "evo.your-domain.com",
+  "project": "my-app",
+  "hostname": "my-app.your-domain.com",
   "domain": "your-domain.com",
-  "subdomain": "evo",
+  "subdomain": "my-app",
   "target_service": "http://localhost:3000",
   "target_port": 3000,
   "vps_server": "prod",
-  "config_path": "/home/your_user/.cloudflared/config-evo.yml",
+  "config_path": "/home/your_user/.cloudflared/config-my-app.yml",
   "credentials_file": "/home/your_user/.cloudflared/abc123-def456.json",
-  "systemd_service": "cloudflared-evo.service",
+  "systemd_service": "cloudflared-my-app.service",
   "registered_at": "2025-12-28T12:06:00Z",
   "registered_by": "claude-code",
   "status": "active",
   "dns_record": {
     "type": "CNAME",
-    "name": "evo",
+    "name": "my-app",
     "target": "abc123-def456.cfargotunnel.com",
     "proxied": true,
     "cloudflare_zone_id": "zone123",
@@ -111,7 +111,7 @@ CREATE INDEX idx_status ON port_allocations(status);
   "metadata": {
     "ingress_rules": [
       {
-        "hostname": "evo.your-domain.com",
+        "hostname": "my-app.your-domain.com",
         "service": "http://localhost:3000"
       }
     ]
@@ -148,22 +148,22 @@ CREATE INDEX idx_status ON port_allocations(status);
 ```json
 {
   "deployment_id": "deploy_20251228_120630_001",
-  "project": "evo-ai-mvp",
+  "project": "my-app",
   "server": "prod",
   "deployment_type": "flask_app",
   "source_info": {
-    "local_path": "/Users/your_user/PROJECTS/evo-ai-mvp",
-    "repository": "https://github.com/user/evo-ai-mvp.git",
+    "local_path": "/Users/your_user/PROJECTS/my-app",
+    "repository": "https://github.com/user/my-app.git",
     "branch": "main",
     "commit": "abc123def"
   },
   "target_info": {
-    "remote_path": "/home/your_user/apps/evo-ai-mvp",
+    "remote_path": "/home/your_user/apps/my-app",
     "user": "your_user",
-    "virtualenv": "/home/your_user/apps/evo-ai-mvp/venv"
+    "virtualenv": "/home/your_user/apps/my-app/venv"
   },
   "service": {
-    "name": "evo-web.service",
+    "name": "my-app-web.service",
     "type": "systemd",
     "port": 3000,
     "enabled_on_boot": true,
@@ -185,8 +185,8 @@ CREATE INDEX idx_status ON port_allocations(status);
   },
   "tunnel": {
     "tunnel_id": "tunnel_20251228_120600_001",
-    "tunnel_name": "evo",
-    "service_name": "cloudflared-evo.service"
+    "tunnel_name": "my-app",
+    "service_name": "cloudflared-my-app.service"
   },
   "metadata": {
     "deployment_method": "rsync",
@@ -593,14 +593,14 @@ def migrate_from_json(json_path: str, db_path: str):
 ### 查詢專案使用的所有資源
 
 ```sql
--- 查詢 evo-ai-mvp 專案的所有資源
+-- 查詢 my-app 專案的所有資源
 SELECT
     'port' as resource_type,
     pa.port as resource_value,
     pa.service,
     pa.status
 FROM port_allocations pa
-WHERE pa.project = 'evo-ai-mvp'
+WHERE pa.project = 'my-app'
 
 UNION ALL
 
@@ -610,7 +610,7 @@ SELECT
     tr.tunnel_name as service,
     tr.status
 FROM tunnel_registrations tr
-WHERE tr.project = 'evo-ai-mvp'
+WHERE tr.project = 'my-app'
 
 UNION ALL
 
@@ -620,7 +620,7 @@ SELECT
     json_extract(vd.service, '$.name') as service,
     vd.status
 FROM vps_deployments vd
-WHERE vd.project = 'evo-ai-mvp';
+WHERE vd.project = 'my-app';
 ```
 
 ### 統計各伺服器資源使用

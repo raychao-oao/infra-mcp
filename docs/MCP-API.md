@@ -42,7 +42,7 @@
     "properties": {
       "project": {
         "type": "string",
-        "description": "Project name (e.g., 'my-app', 'evo-ai-mvp')",
+        "description": "Project name (e.g., 'my-app', 'my-app')",
         "required": true,
         "pattern": "^[a-z0-9-]+$"
       },
@@ -112,11 +112,11 @@
 #### Example 1: 分配偏好 port（成功）
 
 ```
-User: 我的專案 evo-ai-mvp 需要一個 port 來運行 web server，希望使用 3000
+User: 我的專案 my-app 需要一個 port 來運行 web server，希望使用 3000
 
 Claude uses allocate_port:
 {
-  "project": "evo-ai-mvp",
+  "project": "my-app",
   "service": "web-server",
   "preferred_port": 3000,
   "notes": "Main Flask application server"
@@ -127,7 +127,7 @@ Result:
   "success": true,
   "allocated_port": 3000,
   "allocation_id": "alloc_20251228_120530_001",
-  "message": "Port 3000 allocated to evo-ai-mvp/web-server"
+  "message": "Port 3000 allocated to my-app/web-server"
 }
 ```
 
@@ -319,13 +319,13 @@ Result:
 #### Example 1: 註冊新 tunnel（完整流程）
 
 ```
-User: evo-ai-mvp 專案已經分配了 port 3000，現在需要設定 tunnel，domain 用 evo.your-domain.com
+User: my-app 專案已經分配了 port 3000，現在需要設定 tunnel，domain 用 my-app.your-domain.com
 
 Claude uses register_tunnel:
 {
-  "project": "evo-ai-mvp",
-  "tunnel_name": "evo",
-  "hostname": "evo.your-domain.com",
+  "project": "my-app",
+  "tunnel_name": "my-app",
+  "hostname": "my-app.your-domain.com",
   "target_port": 3000,
   "vps_server": "prod"
 }
@@ -334,12 +334,12 @@ Result:
 {
   "success": true,
   "tunnel_id": "tunnel_20251228_120600_001",
-  "tunnel_name": "evo",
-  "hostname": "evo.your-domain.com",
-  "config_path": "/home/your_user/.cloudflared/config-evo.yml",
+  "tunnel_name": "my-app",
+  "hostname": "my-app.your-domain.com",
+  "config_path": "/home/your_user/.cloudflared/config-my-app.yml",
   "dns_record": {
     "type": "CNAME",
-    "name": "evo",
+    "name": "my-app",
     "target": "abc123-def456.cfargotunnel.com",
     "configured": true
   },
@@ -462,26 +462,26 @@ Result:
 #### Example 1: 部署已註冊的 tunnel
 
 ```
-User: 部署 evo tunnel 到 prod
+User: 部署 my-app tunnel 到 prod
 
 Prerequisites:
-- Tunnel 'evo' already registered via register_tunnel
+- Tunnel 'my-app' already registered via register_tunnel
 - Application already deployed (manually or via deployment scripts)
 
 Claude uses deploy_tunnel:
 {
-  "tunnel_name": "evo",
+  "tunnel_name": "my-app",
   "server": "prod"
 }
 
 Result:
 {
   "success": true,
-  "tunnel_name": "evo",
+  "tunnel_name": "my-app",
   "server": "prod",
-  "service_name": "cloudflared-evo.service",
+  "service_name": "cloudflared-my-app.service",
   "status": "running",
-  "hostname": "evo.your-domain.com",
+  "hostname": "my-app.your-domain.com",
   "connections": 4,
   "message": "Tunnel deployed and started successfully"
 }
@@ -577,7 +577,7 @@ Result:
     "ports": [
       {
         "port": 3000,
-        "project": "evo-ai-mvp",
+        "project": "my-app",
         "service": "web-server",
         "allocation_id": "alloc_20251228_120530_001",
         "allocated_at": "2025-12-28T12:05:30Z",
@@ -602,9 +602,9 @@ Result:
     ],
     "tunnels": [
       {
-        "tunnel_name": "evo",
-        "hostname": "evo.your-domain.com",
-        "project": "evo-ai-mvp",
+        "tunnel_name": "my-app",
+        "hostname": "my-app.your-domain.com",
+        "project": "my-app",
         "target_port": 3000,
         "server": "prod",
         "tunnel_id": "tunnel_20251228_120600_001",
@@ -630,9 +630,9 @@ Result:
     ],
     "deployments": [
       {
-        "project": "evo-ai-mvp",
+        "project": "my-app",
         "server": "prod",
-        "service_name": "evo-web.service",
+        "service_name": "my-app-web.service",
         "deployment_type": "flask_app",
         "port": 3000,
         "deployed_at": "2025-12-28T12:06:30Z",
@@ -690,12 +690,12 @@ Result: (see Output Schema above)
 #### Example 2: 查看特定專案的資源
 
 ```
-User: evo-ai-mvp 專案使用了哪些資源？
+User: my-app 專案使用了哪些資源？
 
 Claude uses list_resources:
 {
   "resource_type": "all",
-  "project": "evo-ai-mvp"
+  "project": "my-app"
 }
 
 Result:
@@ -711,8 +711,8 @@ Result:
     ],
     "tunnels": [
       {
-        "tunnel_name": "evo",
-        "hostname": "evo.your-domain.com",
+        "tunnel_name": "my-app",
+        "hostname": "my-app.your-domain.com",
         "target_port": 3000,
         "status": "active"
       }
@@ -720,14 +720,14 @@ Result:
     "deployments": [
       {
         "server": "prod",
-        "service_name": "evo-web.service",
+        "service_name": "my-app-web.service",
         "status": "running"
       }
     ]
   },
   "summary": {
     "total_resources": 3,
-    "project": "evo-ai-mvp"
+    "project": "my-app"
   }
 }
 ```
@@ -766,8 +766,8 @@ Result:
   "resources": {
     "deployments": [
       {
-        "project": "evo-ai-mvp",
-        "service_name": "evo-web.service",
+        "project": "my-app",
+        "service_name": "my-app-web.service",
         "status": "running",
         "port": 3000
       },
@@ -862,7 +862,7 @@ graph TD
 
 **Project names**:
 - 小寫字母、數字、連字號
-- 範例: `evo-ai-mvp`, `pac`, `sandbox`
+- 範例: `my-app`, `pac`, `sandbox`
 
 **Service names**:
 - 描述性名稱
@@ -870,11 +870,11 @@ graph TD
 
 **Tunnel names**:
 - 通常與 project name 相同或簡短版本
-- 範例: `evo`, `pac`, `sandbox`, `myapp`
+- 範例: `my-app`, `pac`, `sandbox`, `myapp`
 
 **Hostnames**:
 - 使用 `<name>.your-domain.com` 作為服務網址
-- 範例: `evo.your-domain.com`, `api.your-domain.com`
+- 範例: `my-app.your-domain.com`, `api.your-domain.com`
 
 ### 2. Port 分配策略
 

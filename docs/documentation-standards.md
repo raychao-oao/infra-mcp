@@ -387,9 +387,9 @@ v[主版本].[次版本]_[YYYYMMDD]_[HHMMSS]
 # 建立資料庫連接
 connection = pymysql.connect(
     host='localhost',
-    user='evo_user',
+    user='db_user',
     password='password',
-    database='evo_ai_mvp'
+    database='my_app'
 )
 ```
 

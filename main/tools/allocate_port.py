@@ -28,7 +28,7 @@ async def allocate_port(
 
     Args:
         store: SQLiteStore instance
-        project: Project name (e.g., 'my-app', 'evo-ai-mvp')
+        project: Project name (e.g., 'my-app', 'my-app')
         service: Service name within the project (e.g., 'web-server', 'api')
         preferred_port: Preferred port number (optional)
         server: VPS server name (default: INFRA_DEFAULT_SERVER)
