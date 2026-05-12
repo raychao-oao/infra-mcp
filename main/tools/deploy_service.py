@@ -188,11 +188,11 @@ async def create_directories(
         if result["success"]:
             created_dirs.append(dir_path)
 
-    # 6. Create log directory with sudo
+    # 6. Create log directory with sudo — owned by caddy so Caddy can write logs
     log_dir = f"/var/log/{project}"
     result = await run_ssh_command(
         server,
-        f"sudo mkdir -p {q(log_dir)} && sudo chown {q(SSH_USER)}:{q(SSH_USER)} {q(log_dir)}"
+        f"sudo mkdir -p {q(log_dir)} && sudo chown caddy:caddy {q(log_dir)}"
     )
     if result["success"]:
         created_dirs.append(log_dir)
@@ -286,7 +286,7 @@ async def generate_and_write_caddy_config(
         return {"success": False, "error": "INVALID_CONFIG_VALUE", "message": str(e)}
 
     # Generate Caddy config based on service type
-    config_lines = [f"{deployment.hostname}:80 {{"]
+    config_lines = [f"{deployment.hostname}:80 {{", "    bind 127.0.0.1"]
 
     service_type = deployment.service_type.value
 
@@ -311,8 +311,9 @@ async def generate_and_write_caddy_config(
         # Reverse proxy to backend
         config_lines.append(f"    reverse_proxy localhost:{deployment.port}")
 
-    # Add logging
-    log_file = deployment.log_path or f"/var/log/{deployment.project}/access.log"
+    # Add logging — always use a file path, not a directory
+    log_dir = (deployment.log_path or f"/var/log/{deployment.project}/").rstrip("/")
+    log_file = f"{log_dir}/access.log"
     config_lines.append(f"    log {{")
     config_lines.append(f"        output file {log_file}")
     config_lines.append(f"    }}")
@@ -404,7 +405,9 @@ Environment="PORT={deployment.port}"
             for key, value in deployment.environment.items():
                 service_content += f'Environment="{key}={value}"\n'
 
-        service_content += f"""ExecStart=/usr/bin/python3 app.py
+        custom_exec = (deployment.systemd_config or {}).get("exec_start", "")
+        exec_start = custom_exec.replace("{port}", str(deployment.port)) if custom_exec else "/usr/bin/python3 app.py"
+        service_content += f"""ExecStart={exec_start}
 Restart=on-failure
 RestartSec=5s
 
@@ -428,7 +431,9 @@ Environment="PORT={deployment.port}"
             for key, value in deployment.environment.items():
                 service_content += f'Environment="{key}={value}"\n'
 
-        service_content += f"""ExecStart=/usr/bin/node index.js
+        custom_exec = (deployment.systemd_config or {}).get("exec_start", "")
+        exec_start = custom_exec.replace("{port}", str(deployment.port)) if custom_exec else "/usr/bin/node index.js"
+        service_content += f"""ExecStart={exec_start}
 Restart=on-failure
 RestartSec=5s
 

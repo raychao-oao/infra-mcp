@@ -1599,8 +1599,8 @@ async def mcp_endpoint(request: JSONRPCRequest):
                 result = await check_service_health(
                     store=store,
                     server=arguments["server"],
-                    project=arguments["project"],
-                    service=arguments["service"],
+                    project=arguments.get("project"),
+                    service=arguments.get("service"),
                     include_system_stats=arguments.get("include_system_stats", False)
                 )
 
