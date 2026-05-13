@@ -1,40 +1,40 @@
 # Infrastructure MCP Security Tools Guide
 
-Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，用於管理和監控 VPS 服務的安全配置。
+Infrastructure MCP Server provides a complete set of security audit and operations tools for managing and monitoring VPS service security configurations.
 
-## 安全審計工具
+## Security Audit Tools
 
 ### 1. check_listening_ports
 
-檢查 VPS 上所有監聽端口，識別未綁定到 127.0.0.1 的安全風險。
+Checks all listening ports on a VPS and identifies security risks — ports not bound to 127.0.0.1.
 
-**用途**：
-- 發現公開暴露的服務端口
-- 驗證 Zero Trust 架構合規性
-- 定期安全審計
+**Use cases**:
+- Discover publicly exposed service ports
+- Verify Zero Trust architecture compliance
+- Regular security audits
 
-**使用範例**：
+**Example**:
 ```json
 {
   "server": "staging"
 }
 ```
 
-**返回結果**：
-- `summary`: 端口統計（總數、localhost only、潛在風險）
-- `all_ports`: 所有監聽端口列表
-- `security_risks`: 風險端口詳情
+**Response fields**:
+- `summary`: Port statistics (total, localhost-only, potential risks)
+- `all_ports`: List of all listening ports
+- `security_risks`: Details of risky ports
 
 ### 2. validate_service_security
 
-驗證單個服務的安全配置，包括 Docker、Caddy、實際端口綁定。
+Validates a single service's security configuration, including Docker, Caddy, and actual port bindings.
 
-**用途**：
-- 部署後安全驗證
-- 故障排查
-- 配置審查
+**Use cases**:
+- Post-deployment security verification
+- Troubleshooting
+- Configuration review
 
-**使用範例**：
+**Example**:
 ```json
 {
   "project": "PAC",
@@ -44,25 +44,25 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
 }
 ```
 
-**檢查項目**：
-- Caddy 配置是否有 `bind 127.0.0.1`
-- Docker port bindings 是否使用 `127.0.0.1:port:port`
-- systemd 服務的 HOST 環境變數
-- 實際端口綁定狀態
+**What it checks**:
+- Whether Caddy configuration has `bind 127.0.0.1`
+- Whether Docker port bindings use `127.0.0.1:port:port`
+- The HOST environment variable in systemd services
+- Actual port binding state
 
-**auto_fix 功能**：
-設置 `"auto_fix": true` 可自動修復部分問題（如 Caddy bind 指令）
+**auto_fix**:
+Set `"auto_fix": true` to automatically fix certain issues (e.g., adding Caddy bind directive)
 
 ### 3. audit_all_services
 
-批量審計所有已部署服務的安全配置，生成完整報告。
+Bulk-audits the security configuration of all deployed services and generates a full report.
 
-**用途**：
-- 全面安全審計
-- 生成合規報告
-- 批量修復安全問題
+**Use cases**:
+- Comprehensive security audit
+- Generating compliance reports
+- Bulk security remediation
 
-**使用範例**：
+**Example**:
 ```json
 {
   "server": "prod",
@@ -70,30 +70,30 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
 }
 ```
 
-**返回結果**：
-- `summary`: 總體統計（總服務數、安全/脆弱服務數、安全評分）
-- `by_server`: 按 VPS 分組統計
-- `services`: 每個服務的詳細審計結果
+**Response fields**:
+- `summary`: Overall statistics (total services, secure/vulnerable counts, security score)
+- `by_server`: Statistics grouped by VPS
+- `services`: Detailed audit results per service
 
-## 配置管理工具
+## Configuration Management Tools
 
 ### 4. get_caddy_config
 
-獲取 Caddy 配置文件內容（主配置或服務專屬配置）。
+Retrieves Caddy configuration file content (main config or service-specific config).
 
-**用途**：
-- 檢視當前配置
-- 排查路由問題
-- 配置備份
+**Use cases**:
+- View current configuration
+- Troubleshoot routing issues
+- Configuration backup
 
-**使用範例**：
+**Example**:
 ```json
-// 獲取主配置
+// Get main config
 {
   "server": "staging"
 }
 
-// 獲取服務專屬配置
+// Get service-specific config
 {
   "server": "staging",
   "project": "tcm-go",
@@ -103,39 +103,39 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
 
 ### 5. get_tunnel_config
 
-獲取 Cloudflare Tunnel 配置。
+Retrieves Cloudflare Tunnel configuration.
 
-**用途**：
-- 檢視 ingress 規則
-- 確認 tunnel ID
-- 診斷路由問題
+**Use cases**:
+- View ingress rules
+- Confirm tunnel ID
+- Diagnose routing issues
 
-**使用範例**：
+**Example**:
 ```json
 {
   "server": "dev2"
 }
 ```
 
-**返回結果**：
+**Response fields**:
 - `tunnel_id`: Tunnel UUID
-- `credentials_file`: 憑證檔案路徑
-- `ingress_rules`: 路由規則列表
+- `credentials_file`: Path to credentials file
+- `ingress_rules`: List of routing rules
 
-## 服務重啟工具
+## Service Restart Tools
 
 ### 6. restart_service
 
-重啟服務組件（systemd service、Docker 容器、Caddy、Tunnel）。
+Restarts service components (systemd service, Docker container, Caddy, Tunnel).
 
-**用途**：
-- 套用配置變更
-- 恢復故障服務
-- 完成部署流程
+**Use cases**:
+- Apply configuration changes
+- Recover failed services
+- Complete deployment workflow
 
-**使用範例**：
+**Example**:
 ```json
-// 重啟主服務
+// Restart main service
 {
   "project": "PAC",
   "service": "dashboard",
@@ -143,7 +143,7 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
   "component": "service"
 }
 
-// 重啟 Caddy
+// Restart Caddy
 {
   "project": "PAC",
   "service": "dashboard",
@@ -151,7 +151,7 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
   "component": "caddy"
 }
 
-// 重啟 Tunnel
+// Restart Tunnel
 {
   "project": "PAC",
   "service": "dashboard",
@@ -160,25 +160,25 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
 }
 ```
 
-**component 選項**：
-- `service`: 主服務（systemd 或 Docker）
+**component options**:
+- `service`: Main service (systemd or Docker)
 - `caddy`: Caddy web server
 - `tunnel`: Cloudflare Tunnel
 
-## 日誌管理工具
+## Log Management Tools
 
 ### 7. get_service_logs
 
-獲取服務日誌（systemd、Docker、Caddy、Tunnel）。
+Retrieves service logs (systemd, Docker, Caddy, Tunnel).
 
-**用途**：
-- 故障排查
-- 性能分析
-- 安全事件調查
+**Use cases**:
+- Troubleshooting
+- Performance analysis
+- Security incident investigation
 
-**使用範例**：
+**Example**:
 ```json
-// 獲取服務日誌
+// Get service logs
 {
   "server": "prod",
   "project": "PAC",
@@ -187,14 +187,14 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
   "lines": 100
 }
 
-// 獲取 Caddy 日誌
+// Get Caddy logs
 {
   "server": "staging",
   "component": "caddy",
   "lines": 50
 }
 
-// 獲取 Tunnel 日誌
+// Get Tunnel logs
 {
   "server": "dev2",
   "component": "tunnel",
@@ -202,24 +202,24 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
 }
 ```
 
-**參數說明**：
-- `lines`: 返回日誌行數（預設 50，最大 1000）
-- `component`: 日誌來源（service/caddy/tunnel）
+**Parameters**:
+- `lines`: Number of log lines to return (default 50, max 1000)
+- `component`: Log source (service/caddy/tunnel)
 
-## 健康檢查工具
+## Health Check Tools
 
 ### 8. check_service_health
 
-檢查服務和系統健康狀態。
+Checks service and system health status.
 
-**用途**：
-- 監控服務狀態
-- 系統資源監控
-- 預防性維護
+**Use cases**:
+- Monitor service status
+- System resource monitoring
+- Preventive maintenance
 
-**使用範例**：
+**Example**:
 ```json
-// 檢查特定服務
+// Check a specific service
 {
   "server": "prod",
   "project": "PAC",
@@ -227,56 +227,56 @@ Infrastructure MCP Server 提供了一套完整的安全審計和運維工具，
   "include_system_stats": true
 }
 
-// 檢查基礎設施
+// Check infrastructure
 {
   "server": "staging",
   "include_system_stats": true
 }
 ```
 
-**返回結果**：
-- `service_health`: 服務狀態（如有指定）
-- `infrastructure`: 基礎設施狀態（Caddy、Tunnel）
-- `system_stats`: 系統資源統計（記憶體、磁碟、負載）
-- `overall_health`: 總體健康狀態
+**Response fields**:
+- `service_health`: Service status (if specified)
+- `infrastructure`: Infrastructure status (Caddy, Tunnel)
+- `system_stats`: System resource statistics (memory, disk, load)
+- `overall_health`: Overall health status
 
-## 最佳實踐
+## Best Practices
 
-### 定期安全審計
+### Regular Security Audits
 
-**建議頻率**：每週一次
+**Recommended frequency**: Once per week
 
 ```bash
-# 1. 檢查所有 VPS 的監聽端口
+# 1. Check listening ports on all VPS servers
 check_listening_ports(server="prod")
 check_listening_ports(server="staging")
 check_listening_ports(server="dev1")
 check_listening_ports(server="dev2")
 
-# 2. 審計所有服務
+# 2. Audit all services
 audit_all_services()
 ```
 
-### 部署後驗證
+### Post-Deployment Verification
 
-每次部署新服務或修改配置後：
+After deploying a new service or modifying configuration:
 
 ```bash
-# 1. 驗證服務安全配置
+# 1. Validate service security configuration
 validate_service_security(
     project="your-project",
     service="your-service",
     server="prod"
 )
 
-# 2. 檢查服務健康狀態
+# 2. Check service health
 check_service_health(
     server="prod",
     project="your-project",
     service="your-service"
 )
 
-# 3. 檢查日誌確認正常啟動
+# 3. Check logs to confirm normal startup
 get_service_logs(
     server="prod",
     project="your-project",
@@ -285,35 +285,35 @@ get_service_logs(
 )
 ```
 
-### 故障排查流程
+### Troubleshooting Workflow
 
-當服務出現問題時：
+When a service has issues:
 
 ```bash
-# 1. 檢查健康狀態
+# 1. Check health status
 check_service_health(server="prod", project="...", service="...")
 
-# 2. 查看最近日誌
+# 2. View recent logs
 get_service_logs(server="prod", project="...", service="...", lines=100)
 
-# 3. 檢查配置
+# 3. Check configuration
 get_caddy_config(server="prod", project="...", service="...")
 
-# 4. 驗證安全配置
+# 4. Validate security configuration
 validate_service_security(project="...", service="...", server="prod")
 
-# 5. 必要時重啟服務
+# 5. Restart service if needed
 restart_service(project="...", service="...", server="prod")
 ```
 
-## 安全注意事項
+## Security Notes
 
-1. **auto_fix 功能**：謹慎使用，建議先不帶 auto_fix 執行，確認問題後再啟用
-2. **日誌敏感資訊**：日誌可能包含敏感資訊，注意保護
-3. **重啟影響**：重啟服務會導致短暫中斷，選擇適當時機
-4. **並發操作**：避免同時對同一服務執行多個操作
+1. **auto_fix**: Use with caution — run without auto_fix first to confirm the issues, then enable it
+2. **Sensitive log data**: Logs may contain sensitive information; handle with care
+3. **Restart impact**: Restarting causes brief downtime; choose an appropriate time window
+4. **Concurrent operations**: Avoid running multiple operations on the same service simultaneously
 
-## 工具依賴關係
+## Tool Dependency Map
 
 ```
 audit_all_services
@@ -325,43 +325,43 @@ check_service_health
   └── get_service_logs (optional)
 
 restart_service
-  └── check_service_health (建議在重啟後執行)
+  └── check_service_health (recommended after restart)
 ```
 
-## 故障排查指南
+## Troubleshooting Guide
 
-### 問題：check_listening_ports 報告端口暴露
+### Issue: check_listening_ports Reports Exposed Ports
 
-**原因**：服務未綁定到 127.0.0.1
+**Cause**: Service not bound to 127.0.0.1
 
-**解決方案**：
-1. 使用 `validate_service_security` 找出具體服務
-2. 使用 `auto_fix=true` 嘗試自動修復
-3. 手動修改配置（Docker compose 或環境變數）
-4. 使用 `restart_service` 重啟服務
+**Resolution**:
+1. Use `validate_service_security` to identify the specific service
+2. Try `auto_fix=true` for automatic remediation
+3. Manually update configuration (Docker compose or environment variables)
+4. Use `restart_service` to apply the fix
 
-### 問題：audit_all_services 顯示服務脆弱
+### Issue: audit_all_services Shows Vulnerable Services
 
-**原因**：Caddy 配置缺少 bind 指令，或 Docker ports 配置錯誤
+**Cause**: Caddy configuration missing bind directive, or Docker ports misconfigured
 
-**解決方案**：
-1. 檢查詳細的 `issues` 列表
-2. 使用 `get_caddy_config` 查看配置
-3. 使用 `auto_fix=true` 嘗試批量修復
-4. 使用 `restart_service` 套用修復
+**Resolution**:
+1. Review the detailed `issues` list
+2. Use `get_caddy_config` to inspect the configuration
+3. Use `auto_fix=true` for bulk remediation
+4. Use `restart_service` to apply fixes
 
-### 問題：服務重啟失敗
+### Issue: Service Restart Fails
 
-**原因**：配置錯誤、端口衝突、依賴服務未運行
+**Cause**: Configuration error, port conflict, or dependency service not running
 
-**解決方案**：
-1. 使用 `get_service_logs` 查看錯誤日誌
-2. 使用 `check_service_health` 檢查依賴服務
-3. 使用 `check_listening_ports` 檢查端口衝突
-4. 修正問題後再次重啟
+**Resolution**:
+1. Use `get_service_logs` to view error logs
+2. Use `check_service_health` to check dependency services
+3. Use `check_listening_ports` to identify port conflicts
+4. Fix the issue, then restart again
 
 ---
 
-**文檔版本**：1.0
-**最後更新**：2026-01-28
-**維護者**：Infrastructure MCP Team
+**Document version**: 1.0
+**Last updated**: 2026-01-28
+**Maintainer**: Infrastructure MCP Team

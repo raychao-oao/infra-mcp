@@ -2,7 +2,7 @@
 register_service MCP Tool Implementation
 
 Unified Directory Structure:
-- /var/www/{project}/          - Static files (實體)
+- /var/www/{project}/          - Static files (actual location)
 - ~/PRJ/{project}/www/         - Symlink to /var/www/{project}/
 - ~/PRJ/{project}/app/         - Backend code (Flask/Node.js)
 

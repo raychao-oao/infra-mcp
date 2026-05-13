@@ -1,65 +1,65 @@
 # Infrastructure MCP Server - Quick Start Guide
 
-**目標**: 5 分鐘內啟動 Infrastructure MCP Server 並測試第一個 tool
+**Goal**: Get the Infrastructure MCP Server running and test your first tool in 5 minutes
 
 ---
 
-## 🚀 快速啟動（本地開發）
+## 🚀 Quick Start (Local Development)
 
-### 1. 環境設定（2 分鐘）
+### 1. Environment Setup (2 minutes)
 
 ```bash
-# Clone 專案（如果還沒有）
+# Clone the repo (if you haven't already)
 cd ~/PROJECTS
 git clone <repository-url> infra-mcp
 cd infra-mcp
 
-# 建立虛擬環境
+# Create virtual environment
 python3.11 -m venv venv
 source venv/bin/activate
 
-# 安裝依賴
+# Install dependencies
 pip install -r requirements.txt
 
-# 設定環境變數
+# Configure environment variables
 cp .env.example .env
-# 編輯 .env（如需使用 Cloudflare API）
+# Edit .env if you need to use the Cloudflare API
 ```
 
-### 2. 啟動 MCP Server（1 分鐘）
+### 2. Start the MCP Server (1 minute)
 
 ```bash
-# 啟動 server
+# Start the server
 python main/server.py
 
-# 看到以下訊息表示成功：
+# You should see:
 # INFO:     Application startup complete.
 # INFO:     Uvicorn running on http://127.0.0.1:8000
 ```
 
-### 3. 測試第一個 Tool（2 分鐘）
+### 3. Test Your First Tool (2 minutes)
 
-**在另一個終端執行**（所有操作皆透過 `/mcp` endpoint，JSON-RPC 2.0 格式）：
+**Run in another terminal** (all operations go through the `/mcp` endpoint in JSON-RPC 2.0 format):
 
 ```bash
-# 1. 列出所有可用 tools
+# 1. List all available tools
 curl -s -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq '.result.tools | length'
-# 預期輸出: 31
+# Expected output: 31
 
-# 2. 列出所有 tool 名稱
+# 2. List all tool names
 curl -s -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq -r '.result.tools[].name' | head -5
-# 預期輸出: allocate_port, release_port, list_resources, ...
+# Expected output: allocate_port, release_port, list_resources, ...
 
-# 3. 測試 list_resources tool
+# 3. Test list_resources tool
 curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_resources","arguments":{"resource_type":"all"}}}' | jq
 
-# 4. 測試 allocate_port
+# 4. Test allocate_port
 curl -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"allocate_port","arguments":{"project":"test","service":"demo","server":"prod"}}}' | jq
@@ -67,9 +67,9 @@ curl -X POST http://localhost:8000/mcp \
 
 ---
 
-## 🎯 常見任務
+## 🎯 Common Tasks
 
-### 查看已分配的 Ports
+### View Allocated Ports
 
 ```bash
 curl -X POST http://localhost:8000/mcp \
@@ -77,7 +77,7 @@ curl -X POST http://localhost:8000/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_resources","arguments":{"resource_type":"ports"}}}' | jq
 ```
 
-### 檢查伺服器的安全狀態
+### Check Server Security Status
 
 ```bash
 curl -X POST http://localhost:8000/mcp \
@@ -85,7 +85,7 @@ curl -X POST http://localhost:8000/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"audit_all_services","arguments":{"server":"prod"}}}' | jq
 ```
 
-### 列出所有已註冊的主 Tunnels
+### List All Registered Main Tunnels
 
 ```bash
 curl -X POST http://localhost:8000/mcp \
@@ -93,7 +93,7 @@ curl -X POST http://localhost:8000/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_main_tunnels","arguments":{}}}' | jq
 ```
 
-### 查看服務資訊
+### View Service Info
 
 ```bash
 curl -X POST http://localhost:8000/mcp \
@@ -103,11 +103,11 @@ curl -X POST http://localhost:8000/mcp \
 
 ---
 
-## 🔧 透過 Claude Code 使用 MCP Tools
+## 🔧 Using MCP Tools via Claude Code
 
-### 在 Claude Desktop 中設定
+### Claude Desktop Setup
 
-編輯 `~/.config/Claude/claude_desktop_config.json`：
+Edit `~/.config/Claude/claude_desktop_config.json`:
 
 ```json
 {
@@ -120,20 +120,20 @@ curl -X POST http://localhost:8000/mcp \
 }
 ```
 
-重啟 Claude Desktop，即可在對話中使用 infrastructure MCP tools。
+Restart Claude Desktop to start using infrastructure MCP tools in your conversations.
 
-### 在 Claude Code 中使用
+### Using in Claude Code
 
-Claude Code 會自動載入專案的 MCP server（如果在 `claude_desktop_config.json` 中設定）。
+Claude Code automatically loads the project's MCP server (if configured in `claude_desktop_config.json`).
 
-直接在對話中要求：
-- "幫我在 prod 上分配一個 port 給 test-api"
-- "檢查 prod 的安全狀態"
-- "列出所有已部署的服務"
+Ask directly in the conversation:
+- "Allocate a port on prod for test-api"
+- "Check the security status of prod"
+- "List all deployed services"
 
 ---
 
-## 📊 31 個 MCP Tools 分類
+## 📊 31 MCP Tools by Category
 
 ### 1. Port & Resource (3)
 - allocate_port, release_port, list_resources
@@ -157,51 +157,51 @@ Claude Code 會自動載入專案的 MCP server（如果在 `claude_desktop_conf
 - restart_service, get_caddy_config, get_service_logs, check_service_health
 - create_cloudflare_tunnel, delete_cloudflare_tunnel, list_cloudflare_tunnels, get_tunnel_token
 
-完整 API 文檔請參考 [`docs/MCP-API.md`](docs/MCP-API.md)
+See [`docs/MCP-API.md`](docs/MCP-API.md) for full API documentation.
 
 ---
 
-## 🐛 疑難排解
+## 🐛 Troubleshooting
 
-### Port 8000 已被占用
+### Port 8000 Already in Use
 
 ```bash
-# 檢查占用 8000 的程序
+# Find the process using port 8000
 lsof -i :8000
 
-# 終止該程序
+# Kill that process
 kill -9 <PID>
 ```
 
-### 虛擬環境找不到
+### Virtual Environment Not Found
 
 ```bash
-# 重新建立
+# Recreate it
 python3.11 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### SQLite 資料庫權限錯誤
+### SQLite Database Permission Error
 
 ```bash
-# 確保資料庫檔案有正確權限
+# Ensure the database file has correct permissions
 chmod 644 infrastructure.db
 ```
 
 ---
 
-## 📚 下一步
+## 📚 Next Steps
 
-**學習更多**:
-- 查看 [`docs/MCP-API.md`](docs/MCP-API.md) 了解所有 tool 的 API 規格
-- 查看 [`docs/Architecture.md`](docs/Architecture.md) 了解系統架構
+**Learn more**:
+- See [`docs/MCP-API.md`](docs/MCP-API.md) for all tool API specifications
+- See [`docs/Architecture.md`](docs/Architecture.md) for system architecture
 
-**生產部署**:
-- SSH 到 prod: `ssh prod`
-- 檢查生產狀態: `systemctl status infra-mcp`
+**Production deployment**:
+- SSH to prod: `ssh prod`
+- Check production status: `systemctl status infra-mcp`
 
 ---
 
-**更新時間**: 2026-05-11
-**適用版本**: Infrastructure Management MCP v1.0.0
+**Last updated**: 2026-05-11
+**Version**: Infrastructure Management MCP v1.0.0

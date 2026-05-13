@@ -12,20 +12,20 @@ Base = declarative_base()
 
 class DeploymentStatus(str, enum.Enum):
     """Service deployment status."""
-    REGISTERED = "registered"      # 已註冊配置，尚未部署
-    DEPLOYED = "deployed"          # 已部署並運行中
-    STOPPED = "stopped"            # 已停止，檔案保留
-    ARCHIVED = "archived"          # 已歸檔，移除 Caddy/tunnel，配置備份
-    PURGED = "purged"              # 已清除，完全刪除
+    REGISTERED = "registered"      # Configuration registered, not yet deployed
+    DEPLOYED = "deployed"          # Deployed and running
+    STOPPED = "stopped"            # Stopped, files retained
+    ARCHIVED = "archived"          # Archived: Caddy/tunnel removed, config backed up
+    PURGED = "purged"              # Purged: completely deleted
 
 
 class ServiceType(str, enum.Enum):
     """Service type."""
-    FLASK = "flask"                # Flask 應用
-    NODEJS = "nodejs"              # Node.js 應用
-    STATIC = "static"              # 靜態網站
-    DOCKER = "docker"              # Docker 容器
-    FLASK_STATIC = "flask+static"  # Flask + 靜態檔案（如 PAC）
+    FLASK = "flask"                # Flask application
+    NODEJS = "nodejs"              # Node.js application
+    STATIC = "static"              # Static website
+    DOCKER = "docker"              # Docker container
+    FLASK_STATIC = "flask+static"  # Flask + static files
 
 
 class ServiceDeployment(Base):
@@ -43,21 +43,21 @@ class ServiceDeployment(Base):
     service_type = Column(Enum(ServiceType), nullable=False)
 
     # Network configuration
-    port = Column(Integer, nullable=True)  # 對應 port_allocations
-    hostname = Column(String, nullable=True)  # 對應 tunnel_registrations
+    port = Column(Integer, nullable=True)  # References port_allocations
+    hostname = Column(String, nullable=True)  # References tunnel_registrations
     tunnel_name = Column(String, nullable=True)
 
     # File paths
-    app_path = Column(String, nullable=True)  # 應用程式碼路徑
-    static_path = Column(String, nullable=True)  # 靜態檔案路徑
-    data_path = Column(String, nullable=True)  # 資料目錄
-    log_path = Column(String, nullable=True)  # 日誌目錄
-    config_path = Column(String, nullable=True)  # 配置檔案路徑
+    app_path = Column(String, nullable=True)  # Application code path
+    static_path = Column(String, nullable=True)  # Static files path
+    data_path = Column(String, nullable=True)  # Data directory
+    log_path = Column(String, nullable=True)  # Log directory
+    config_path = Column(String, nullable=True)  # Config files path
 
     # Configuration (stored as JSON)
-    caddy_rules = Column(JSON, nullable=True)  # Caddy 路由規則
-    environment = Column(JSON, nullable=True)  # 環境變數
-    systemd_config = Column(JSON, nullable=True)  # systemd 服務配置
+    caddy_rules = Column(JSON, nullable=True)  # Caddy routing rules
+    environment = Column(JSON, nullable=True)  # Environment variables
+    systemd_config = Column(JSON, nullable=True)  # systemd service configuration
 
     # Status management
     status = Column(Enum(DeploymentStatus), nullable=False, default=DeploymentStatus.REGISTERED, index=True)
@@ -70,7 +70,7 @@ class ServiceDeployment(Base):
 
     # Metadata
     notes = Column(Text, nullable=True)
-    backup_config = Column(JSON, nullable=True)  # 用於 archived 狀態時保存配置備份
+    backup_config = Column(JSON, nullable=True)  # Config backup saved when status is archived
 
     def __repr__(self):
         return f"<ServiceDeployment(project={self.project}, service={self.service}, server={self.server}, status={self.status})>"

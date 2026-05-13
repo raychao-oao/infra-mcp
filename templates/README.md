@@ -1,46 +1,46 @@
 # Security Configuration Templates
 
-這些模板提供了符合 Zero Trust 架構的安全配置範例。
+These templates provide secure configuration examples following Zero Trust architecture.
 
-## 核心原則
+## Core Principle
 
-**所有服務必須綁定到 127.0.0.1（localhost），只通過 Cloudflare Tunnel 對外提供訪問。**
+**All services must bind to 127.0.0.1 (localhost) and are only accessible externally through Cloudflare Tunnel.**
 
-## 模板列表
+## Template List
 
 ### 1. docker-compose.secure.yml
 
-Docker Compose 安全配置模板。
+Secure Docker Compose configuration template.
 
-**關鍵配置**：
+**Key configuration**:
 ```yaml
 ports:
   - "127.0.0.1:${APP_PORT}:${APP_PORT}"
 ```
 
-**使用方法**：
+**Usage**:
 ```bash
-# 複製模板
+# Copy the template
 cp templates/docker-compose.secure.yml ~/PRJ/your-project/docker-compose.yml
 
-# 編輯變數
+# Set variables
 export PROJECT="your-project"
 export SERVICE="your-service"
 export APP_PORT="8080"
 
-# 替換變數（可選）
+# Substitute variables (optional)
 envsubst < docker-compose.yml > docker-compose.tmp
 mv docker-compose.tmp docker-compose.yml
 
-# 啟動服務
+# Start the service
 docker compose up -d
 ```
 
 ### 2. Caddyfile.secure
 
-Caddy 安全配置模板。
+Secure Caddy configuration template.
 
-**關鍵配置**：
+**Key configuration**:
 ```caddyfile
 your-domain.com:80 {
     bind 127.0.0.1
@@ -48,137 +48,137 @@ your-domain.com:80 {
 }
 ```
 
-**使用方法**：
+**Usage**:
 ```bash
-# 複製模板
+# Copy the template
 sudo cp templates/Caddyfile.secure /etc/caddy/sites/your-project-your-service.caddy
 
-# 編輯配置
+# Edit the configuration
 sudo nano /etc/caddy/sites/your-project-your-service.caddy
 
-# 驗證配置
+# Validate configuration
 sudo caddy validate --config /etc/caddy/Caddyfile
 
-# 重啟 Caddy
+# Restart Caddy
 sudo systemctl restart caddy
 ```
 
 ### 3. systemd.secure.service
 
-Systemd 服務安全配置模板。
+Secure systemd service configuration template.
 
-**關鍵配置**：
+**Key configuration**:
 ```ini
 Environment="HOST=127.0.0.1"
 Environment="PORT=8080"
 ExecStart=... --bind 127.0.0.1:8080 ...
 ```
 
-**使用方法**：
+**Usage**:
 ```bash
-# 複製模板
+# Copy the template
 sudo cp templates/systemd.secure.service /etc/systemd/system/your-project-your-service.service
 
-# 編輯配置
+# Edit the configuration
 sudo nano /etc/systemd/system/your-project-your-service.service
 
-# 重新載入 systemd
+# Reload systemd
 sudo systemctl daemon-reload
 
-# 啟用並啟動服務
+# Enable and start the service
 sudo systemctl enable your-project-your-service
 sudo systemctl start your-project-your-service
 
-# 檢查狀態
+# Check status
 sudo systemctl status your-project-your-service
 ```
 
-## 變數說明
+## Variable Reference
 
-| 變數 | 說明 | 範例 |
-|------|------|------|
-| `${PROJECT}` | 專案名稱 | `PAC`, `tcm-go` |
-| `${SERVICE}` | 服務名稱 | `dashboard`, `api` |
-| `${HOSTNAME}` | 公開域名 | `myapp.your-domain.com` |
-| `${APP_PORT}` | 應用端口 | `8080`, `5000` |
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `${PROJECT}` | Project name | `PAC`, `tcm-go` |
+| `${SERVICE}` | Service name | `dashboard`, `api` |
+| `${HOSTNAME}` | Public hostname | `myapp.your-domain.com` |
+| `${APP_PORT}` | Application port | `8080`, `5000` |
 
-## 安全檢查清單
+## Security Checklist
 
-部署前請確認：
+Before deploying, verify:
 
-- [ ] Docker ports 格式為 `127.0.0.1:port:port`
-- [ ] Caddy 配置包含 `bind 127.0.0.1`
-- [ ] Systemd 環境變數 `HOST=127.0.0.1`
-- [ ] 應用程式綁定到 `127.0.0.1` 而非 `0.0.0.0`
-- [ ] UFW 防火牆只開放 SSH (port 22)
-- [ ] 服務通過 Cloudflare Tunnel 對外訪問
+- [ ] Docker ports use `127.0.0.1:port:port` format
+- [ ] Caddy configuration includes `bind 127.0.0.1`
+- [ ] systemd environment variable `HOST=127.0.0.1`
+- [ ] Application binds to `127.0.0.1`, not `0.0.0.0`
+- [ ] UFW firewall only allows SSH (port 22)
+- [ ] Service is accessible externally through Cloudflare Tunnel
 
-## 驗證部署
+## Verifying Your Deployment
 
-使用 Infrastructure MCP 工具驗證：
+Use Infrastructure MCP tools to verify:
 
 ```bash
-# 1. 驗證服務安全配置
+# 1. Validate service security configuration
 validate_service_security(project="...", service="...", server="...")
 
-# 2. 檢查監聽端口
+# 2. Check listening ports
 check_listening_ports(server="...")
 
-# 3. 測試服務健康狀態
+# 3. Test service health
 check_service_health(server="...", project="...", service="...")
 ```
 
-## 常見錯誤
+## Common Mistakes
 
-### 錯誤 1：端口公開暴露
+### Mistake 1: Port Exposed Publicly
 
-**問題**：
+**Problem**:
 ```yaml
 ports:
-  - "8080:8080"  # ❌ 錯誤
+  - "8080:8080"  # ❌ Wrong
 ```
 
-**修正**：
+**Fix**:
 ```yaml
 ports:
-  - "127.0.0.1:8080:8080"  # ✅ 正確
+  - "127.0.0.1:8080:8080"  # ✅ Correct
 ```
 
-### 錯誤 2：Caddy 缺少 bind 指令
+### Mistake 2: Caddy Missing bind Directive
 
-**問題**：
+**Problem**:
 ```caddyfile
 example.com:80 {
-    reverse_proxy localhost:8080  # ❌ 缺少 bind
+    reverse_proxy localhost:8080  # ❌ Missing bind
 }
 ```
 
-**修正**：
+**Fix**:
 ```caddyfile
 example.com:80 {
-    bind 127.0.0.1  # ✅ 必須添加
+    bind 127.0.0.1  # ✅ Required
     reverse_proxy localhost:8080
 }
 ```
 
-### 錯誤 3：環境變數綁定錯誤
+### Mistake 3: Wrong Environment Variable Binding
 
-**問題**：
+**Problem**:
 ```ini
-Environment="HOST=0.0.0.0"  # ❌ 錯誤
+Environment="HOST=0.0.0.0"  # ❌ Wrong
 ```
 
-**修正**：
+**Fix**:
 ```ini
-Environment="HOST=127.0.0.1"  # ✅ 正確
+Environment="HOST=127.0.0.1"  # ✅ Correct
 ```
 
-## 參考資源
+## References
 
 - [Infrastructure MCP Security Tools Guide](../docs/security-tools-guide.md)
 - [Zero Trust Architecture](https://www.cloudflare.com/learning/security/glossary/what-is-zero-trust/)
 
 ---
 
-**版本**：1.0
-**最後更新**：2026-01-28
+**Version**: 1.0
+**Last updated**: 2026-01-28

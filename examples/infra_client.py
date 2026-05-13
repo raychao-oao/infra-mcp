@@ -1,9 +1,9 @@
 """
 Infrastructure MCP Client
 
-簡單的 Python 客戶端，用於與 Infrastructure MCP Server 互動。
+A simple Python client for interacting with the Infrastructure MCP Server.
 
-使用方式:
+Usage:
     from infra_client import InfrastructureMCPClient
 
     client = InfrastructureMCPClient(
@@ -11,7 +11,7 @@ Infrastructure MCP Client
         client_secret=os.getenv("CF_ACCESS_CLIENT_SECRET")
     )
 
-    # 分配 port
+    # Allocate a port
     result = await client.allocate_port("my-app", "web-server")
 """
 
@@ -22,7 +22,7 @@ import httpx
 
 
 class InfrastructureMCPClient:
-    """Infrastructure MCP Server 客戶端"""
+    """Client for the Infrastructure MCP Server"""
 
     def __init__(
         self,
@@ -32,13 +32,13 @@ class InfrastructureMCPClient:
         timeout: int = 30
     ):
         """
-        初始化 MCP 客戶端
+        Initialize the MCP client.
 
         Args:
             base_url: MCP Server URL
             client_id: Cloudflare Access Service Token Client ID
             client_secret: Cloudflare Access Service Token Client Secret
-            timeout: 請求超時時間（秒）
+            timeout: Request timeout in seconds
         """
         self.base_url = base_url
         self.timeout = timeout
@@ -46,24 +46,24 @@ class InfrastructureMCPClient:
             "Content-Type": "application/json"
         }
 
-        # 加入 Cloudflare Access Service Token
+        # Add Cloudflare Access Service Token headers if provided
         if client_id and client_secret:
             self.headers["CF-Access-Client-Id"] = client_id
             self.headers["CF-Access-Client-Secret"] = client_secret
 
     async def _call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict:
         """
-        呼叫 MCP tool
+        Call an MCP tool.
 
         Args:
-            tool_name: 工具名稱
-            arguments: 工具參數
+            tool_name: Name of the tool to call
+            arguments: Tool arguments
 
         Returns:
-            MCP 回應
+            MCP response dict
 
         Raises:
-            httpx.HTTPError: HTTP 請求失敗
+            httpx.HTTPError: If the HTTP request fails
         """
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
@@ -89,15 +89,15 @@ class InfrastructureMCPClient:
         preferred_port: Optional[int] = None
     ) -> Dict:
         """
-        分配 port 給專案服務
+        Allocate a port for a project service.
 
         Args:
-            project: 專案名稱
-            service: 服務名稱
-            preferred_port: 偏好的 port (可選)
+            project: Project name
+            service: Service name
+            preferred_port: Preferred port number (optional)
 
         Returns:
-            分配結果，包含 port 號碼
+            Allocation result containing the assigned port number
 
         Example:
             >>> result = await client.allocate_port("my-app", "web-server", 5000)
@@ -125,16 +125,16 @@ class InfrastructureMCPClient:
         target_port: int
     ) -> Dict:
         """
-        註冊 Cloudflare Tunnel
+        Register a Cloudflare Tunnel.
 
         Args:
-            project: 專案名稱
-            tunnel_name: Tunnel 名稱
-            hostname: 公開 hostname (e.g., myapp.your-domain.com)
-            target_port: 目標 port
+            project: Project name
+            tunnel_name: Tunnel name
+            hostname: Public hostname (e.g., myapp.your-domain.com)
+            target_port: Target port number
 
         Returns:
-            註冊結果
+            Registration result
 
         Example:
             >>> result = await client.register_tunnel(
@@ -159,16 +159,16 @@ class InfrastructureMCPClient:
         service_port: int
     ) -> Dict:
         """
-        部署 Tunnel 到 VPS
+        Deploy a tunnel to a VPS server.
 
         Args:
-            project: 專案名稱
-            server: VPS 伺服器名稱 (e.g., "prod")
-            tunnel_name: Tunnel 名稱
-            service_port: 服務 port
+            project: Project name
+            server: VPS server name (e.g., "prod")
+            tunnel_name: Tunnel name
+            service_port: Service port number
 
         Returns:
-            部署結果
+            Deployment result
 
         Example:
             >>> result = await client.deploy_tunnel(
@@ -187,10 +187,10 @@ class InfrastructureMCPClient:
 
     async def list_resources(self) -> Dict:
         """
-        列出所有已分配的資源
+        List all allocated resources.
 
         Returns:
-            資源列表，包含 ports 和 tunnels
+            Resource list containing ports and tunnels
 
         Example:
             >>> resources = await client.list_resources()
@@ -208,10 +208,10 @@ class InfrastructureMCPClient:
 
     async def health_check(self) -> bool:
         """
-        檢查 MCP Server 健康狀態
+        Check MCP Server health status.
 
         Returns:
-            True 如果 server 正常運作
+            True if the server is running normally
 
         Example:
             >>> is_healthy = await client.health_check()
@@ -228,7 +228,7 @@ class InfrastructureMCPClient:
             return False
 
 
-# 便利函數
+# Convenience function
 async def setup_project_infrastructure(
     project_name: str,
     service_name: str,
@@ -237,17 +237,17 @@ async def setup_project_infrastructure(
     deploy_server: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    一站式設定專案基礎設施
+    One-shot project infrastructure setup.
 
     Args:
-        project_name: 專案名稱
-        service_name: 服務名稱
-        hostname: 公開 hostname
-        preferred_port: 偏好的 port (可選)
-        deploy_server: 部署伺服器 (可選，如 "prod")
+        project_name: Project name
+        service_name: Service name
+        hostname: Public hostname
+        preferred_port: Preferred port number (optional)
+        deploy_server: Deployment server name (optional, e.g. "prod")
 
     Returns:
-        設定結果，包含分配的 port 和 tunnel 資訊
+        Setup result containing the allocated port and tunnel info
 
     Example:
         >>> result = await setup_project_infrastructure(
@@ -264,18 +264,18 @@ async def setup_project_infrastructure(
         client_secret=os.getenv("CF_ACCESS_CLIENT_SECRET")
     )
 
-    # 1. 分配 port
+    # 1. Allocate port
     port_result = await client.allocate_port(
         project_name,
         service_name,
         preferred_port
     )
 
-    # 從回應中解析 port
+    # Parse the allocated port from the response
     port_text = port_result["result"]["content"][0]["text"]
     allocated_port = int(port_text.split()[-1])
 
-    # 2. 註冊 tunnel
+    # 2. Register tunnel
     tunnel_name = f"{project_name}-{service_name}"
     await client.register_tunnel(
         project_name,
@@ -292,7 +292,7 @@ async def setup_project_infrastructure(
         "hostname": hostname
     }
 
-    # 3. 如果指定了伺服器，部署 tunnel
+    # 3. Deploy tunnel if a server was specified
     if deploy_server:
         await client.deploy_tunnel(
             project_name,
@@ -305,25 +305,25 @@ async def setup_project_infrastructure(
     return result
 
 
-# 範例使用
+# Example usage
 async def example_usage():
-    """示範如何使用 InfrastructureMCPClient"""
+    """Demonstrates how to use InfrastructureMCPClient."""
 
-    # 方法 1: 手動步驟
-    print("=== 方法 1: 手動步驟 ===")
+    # Method 1: Manual step-by-step
+    print("=== Method 1: Manual steps ===")
     client = InfrastructureMCPClient(
         client_id=os.getenv("CF_ACCESS_CLIENT_ID"),
         client_secret=os.getenv("CF_ACCESS_CLIENT_SECRET")
     )
 
-    # 檢查健康狀態
+    # Check health
     if await client.health_check():
         print("✅ MCP Server is healthy")
     else:
         print("❌ MCP Server is down")
         return
 
-    # 分配 port
+    # Allocate port
     port_result = await client.allocate_port(
         project="example-app",
         service="web-server",
@@ -331,7 +331,7 @@ async def example_usage():
     )
     print(f"Port allocated: {port_result}")
 
-    # 註冊 tunnel
+    # Register tunnel
     tunnel_result = await client.register_tunnel(
         project="example-app",
         tunnel_name="example-app",
@@ -340,12 +340,12 @@ async def example_usage():
     )
     print(f"Tunnel registered: {tunnel_result}")
 
-    # 列出資源
+    # List resources
     resources = await client.list_resources()
     print(f"All resources: {resources}")
 
-    # 方法 2: 一站式設定
-    print("\n=== 方法 2: 一站式設定 ===")
+    # Method 2: One-shot setup
+    print("\n=== Method 2: One-shot setup ===")
     result = await setup_project_infrastructure(
         project_name="my-blog",
         service_name="nextjs",
@@ -359,5 +359,4 @@ async def example_usage():
 
 
 if __name__ == "__main__":
-    # 執行範例
     asyncio.run(example_usage())

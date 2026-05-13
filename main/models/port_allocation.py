@@ -13,10 +13,10 @@ Base = declarative_base()
 
 class AllocationStatus(str, enum.Enum):
     """Port allocation status."""
-    ALLOCATED = "allocated"      # 剛分配，尚未使用
-    IN_USE = "in-use"            # 正在使用中
-    RESERVED = "reserved"         # 保留（暫不使用但不釋放）
-    RELEASED = "released"         # 已釋放（可回收）
+    ALLOCATED = "allocated"      # Just allocated, not yet in use
+    IN_USE = "in-use"            # Currently in use
+    RESERVED = "reserved"         # Reserved (not in use but not released)
+    RELEASED = "released"         # Released (can be reclaimed)
 
 
 class PortAllocation(Base):

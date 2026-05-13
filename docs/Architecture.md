@@ -1,61 +1,61 @@
 # Infrastructure MCP Server - Complete Architecture Design
 
-**文檔版本**: v1.0
-**最後更新**: 2025-12-28
-**狀態**: Design Phase
+**Document version**: v1.0
+**Last updated**: 2025-12-28
+**Status**: Design Phase
 
 ---
 
 ## 📖 Executive Summary
 
-Infrastructure Management MCP 是一個基於 MCP (Model Context Protocol) 的集中式基礎設施資源管理系統。透過 MCP Server 提供標準化工具，讓所有專案都能透過 Claude Code 統一申請和管理基礎設施資源（VPS、Cloudflare Tunnels、Port、Domain），避免資源衝突並提升組織擴展性。
+Infrastructure Management MCP is a centralized infrastructure resource management system built on the Model Context Protocol (MCP). It provides standardized tools through an MCP Server so that all projects can request and manage infrastructure resources (VPS, Cloudflare Tunnels, Ports, Domains) through Claude Code — avoiding resource conflicts and improving organizational scalability.
 
-### 核心價值
+### Core Value
 
-1. **集中管理，避免衝突**
-   - 所有 port 分配、tunnel 註冊、domain 使用都記錄在中央資料庫
-   - 自動偵測並防止資源衝突（port 重複使用、subdomain 碰撞等）
+1. **Centralized management, conflict prevention**
+   - All port allocations, tunnel registrations, and domain usage are recorded in a central database
+   - Automatically detects and prevents resource conflicts (duplicate ports, subdomain collisions, etc.)
 
-2. **標準化申請流程**
-   - 專案透過統一的 MCP tools 申請資源
-   - 無需手動編輯配置檔案或 SSH 到伺服器
-   - 降低人為錯誤和配置不一致
+2. **Standardized request workflow**
+   - Projects request resources through unified MCP tools
+   - No need to manually edit config files or SSH into servers
+   - Reduces human error and configuration inconsistencies
 
-3. **可擴展架構**
-   - 輕鬆新增 VPS 伺服器
-   - 支援多個 Cloudflare 帳號
-   - 未來可整合更多雲服務（AWS、GCP等）
+3. **Extensible architecture**
+   - Easily add new VPS servers
+   - Supports multiple Cloudflare accounts
+   - Can integrate additional cloud services in the future (AWS, GCP, etc.)
 
-4. **完整可追溯性**
-   - 記錄誰在何時申請了什麼資源
-   - 方便審計和成本分析
-   - 簡化資源回收流程
+4. **Full traceability**
+   - Records who requested what resource and when
+   - Simplifies auditing and cost analysis
+   - Streamlines resource reclamation
 
 ---
 
 ## 🎯 Design Goals
 
 ### Must Have (Phase 1)
-- ✅ MCP Server 基本框架（支援 Claude Desktop 整合）
-- ✅ 4 個核心 MCP Tools（allocate_port, register_tunnel, deploy_tunnel, list_resources）
-- ✅ JSON 檔案型資源資料庫
-- ✅ 基本資源衝突偵測
-- ✅ prod VPS 支援
-- ✅ 參考 Deployment Scripts（可選使用）
+- ✅ MCP Server core framework (Claude Desktop integration)
+- ✅ 4 core MCP tools (allocate_port, register_tunnel, deploy_tunnel, list_resources)
+- ✅ JSON file-based resource database
+- ✅ Basic resource conflict detection
+- ✅ prod VPS support
+- ✅ Reference deployment scripts (optional)
 
 ### Should Have (Phase 2)
-- 📋 SQLite/PostgreSQL 資料庫
-- 📋 資源自動回收機制
-- 📋 使用統計和成本分析
-- 📋 Web UI（查看資源使用狀況）
-- 📋 支援多台 VPS 伺服器
+- 📋 SQLite/PostgreSQL database
+- 📋 Automatic resource reclamation
+- 📋 Usage statistics and cost analysis
+- 📋 Web UI (resource usage dashboard)
+- 📋 Multi-VPS server support
 
 ### Could Have (Phase 3)
-- 💡 Cloudflare Workers 自動部署
-- 💡 Cloudflare R2 storage 管理
-- 💡 自動化 SSL 憑證管理
-- 💡 負載均衡配置
-- 💡 備份和災難恢復
+- 💡 Cloudflare Workers auto-deployment
+- 💡 Cloudflare R2 storage management
+- 💡 Automated SSL certificate management
+- 💡 Load balancing configuration
+- 💡 Backup and disaster recovery
 
 ---
 
@@ -66,7 +66,7 @@ Infrastructure Management MCP 是一個基於 MCP (Model Context Protocol) 的�
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Claude Code / Claude Desktop             │
-│                    (在任意專案中使用 MCP tools)                │
+│                    (using MCP tools in any project)          │
 └────────────────────────┬────────────────────────────────────┘
                          │
                          │ MCP Protocol
@@ -84,7 +84,7 @@ Infrastructure Management MCP 是一個基於 MCP (Model Context Protocol) 的�
 │                           ▼                                  │
 │                  ┌─────────────────┐                         │
 │                  │ Resource Manager │                         │
-│                  │  (資源分配邏輯)   │                         │
+│                  │  (allocation logic) │                      │
 │                  └────────┬─────────┘                         │
 │                           │                                  │
 │         ┌─────────────────┼─────────────────┐                │
@@ -116,89 +116,89 @@ Infrastructure Management MCP 是一個基於 MCP (Model Context Protocol) 的�
 ### Component Details
 
 #### 1. MCP Server Core
-**責任**:
-- 處理來自 Claude 的 MCP tool 呼叫
-- 參數驗證和錯誤處理
-- 回傳結果給 Claude
+**Responsibilities**:
+- Handle MCP tool calls from Claude
+- Parameter validation and error handling
+- Return results to Claude
 
-**技術**:
+**Technology**:
 - Python 3.11+
 - MCP SDK (Anthropic)
 - FastAPI (optional, for future Web UI)
 
 #### 2. Resource Manager
-**責任**:
-- 統一的資源分配邏輯
-- 衝突偵測（port 重複、subdomain 碰撞）
-- 資源狀態追蹤（allocated, in-use, released）
+**Responsibilities**:
+- Unified resource allocation logic
+- Conflict detection (duplicate ports, subdomain collisions)
+- Resource state tracking (allocated, in-use, released)
 
-**關鍵功能**:
+**Key functions**:
 ```python
 class ResourceManager:
     def allocate_port(self, project, service, preferred_port=None):
-        # 1. 檢查 preferred_port 是否可用
-        # 2. 如果不可用，從 port pool 分配下一個可用 port
-        # 3. 記錄分配資訊到資料庫
-        # 4. 回傳分配的 port
+        # 1. Check if preferred_port is available
+        # 2. If not, allocate the next available port from the pool
+        # 3. Record allocation in the database
+        # 4. Return the allocated port
         pass
 
     def register_tunnel(self, project, tunnel_name, hostname, target_port):
-        # 1. 驗證 hostname 未被使用
-        # 2. 驗證 target_port 已被分配給該專案
-        # 3. 建立 tunnel 配置檔案
-        # 4. 註冊到資料庫
+        # 1. Verify hostname is not already in use
+        # 2. Verify target_port is allocated to this project
+        # 3. Create tunnel config file
+        # 4. Register in the database
         pass
 ```
 
 #### 3. Port Pool Manager
-**責任**:
-- 管理可用 port 範圍（3000-9999）
-- 追蹤已分配 port
-- 支援 port 回收
+**Responsibilities**:
+- Manage available port range (3000-9999)
+- Track allocated ports
+- Support port reclamation
 
-**Port 分配策略**:
-- System ports (0-1023): 保留不使用
-- Registered ports (1024-2999): 保留不使用
-- User ports (3000-9999): 可分配範圍
-- 優先分配用戶偏好的 port（如果可用）
-- 否則分配範圍內最小未使用 port
+**Port allocation strategy**:
+- System ports (0-1023): Reserved, not used
+- Registered ports (1024-2999): Reserved, not used
+- User ports (3000-9999): Allocatable range
+- Preferred ports are honored if available
+- Otherwise, the smallest unallocated port in range is assigned
 
 #### 4. Tunnel Registry
-**責任**:
-- 管理 Cloudflare Tunnel 配置
-- 生成 tunnel config YAML
-- 更新 DNS 記錄（透過 Cloudflare API）
-- 在 VPS 上建立/更新 systemd service
+**Responsibilities**:
+- Manage Cloudflare Tunnel configurations
+- Generate tunnel config YAML
+- Update DNS records (via Cloudflare API)
+- Create/update systemd services on VPS
 
-**Tunnel 生命週期**:
+**Tunnel lifecycle**:
 ```
-1. 註冊階段 (register_tunnel)
-   - 建立 config-<tunnel-name>.yml
-   - 設定 DNS CNAME 記錄
+1. Registration phase (register_tunnel)
+   - Create config-<tunnel-name>.yml
+   - Configure DNS CNAME record
 
-2. 部署階段 (deploy_tunnel)
-   - 複製 config 到 VPS
-   - 建立 systemd service
-   - 啟動 tunnel
+2. Deployment phase (deploy_tunnel)
+   - Copy config to VPS
+   - Create systemd service
+   - Start tunnel
 
-3. 運行階段
-   - 監控 tunnel 狀態（未來功能）
-   - 日誌管理
+3. Running phase
+   - Monitor tunnel status (future)
+   - Log management
 
-4. 回收階段（未來功能）
-   - 停止 tunnel
-   - 刪除 DNS 記錄
-   - 釋放 port
+4. Reclamation phase (future)
+   - Stop tunnel
+   - Delete DNS record
+   - Release port
 ```
 
 #### 5. VPS Server Deployer
-**責任**:
-- SSH 連線到 VPS 伺服器
-- 部署應用程式（Flask, Node.js, etc.）
-- 建立 systemd service
-- 啟動並監控服務
+**Responsibilities**:
+- SSH into VPS servers
+- Deploy applications (Flask, Node.js, etc.)
+- Create systemd services
+- Start and monitor services
 
-**支援的部署類型**:
+**Supported deployment types**:
 - Flask application (Python)
 - Express/Fastify application (Node.js)
 - Static site (Caddy/Nginx)
@@ -275,7 +275,7 @@ servers:
     status: active
 ```
 
-詳細資料模型定義請參考 [`Data-Models.md`](./Data-Models.md)。
+See [`Data-Models.md`](./Data-Models.md) for detailed data model definitions.
 
 ---
 
@@ -283,9 +283,9 @@ servers:
 
 ### 1. allocate_port
 
-**用途**: 為專案服務分配可用 port
+**Purpose**: Allocate an available port for a project service
 
-**輸入參數**:
+**Input parameters**:
 ```json
 {
   "project": "string (required)",
@@ -294,7 +294,7 @@ servers:
 }
 ```
 
-**輸出**:
+**Output**:
 ```json
 {
   "success": true,
@@ -304,21 +304,21 @@ servers:
 }
 ```
 
-**使用範例**:
+**Usage example**:
 ```
-<user>: 我的專案需要一個 port 來運行 web server
-<claude>: 使用 allocate_port tool
+<user>: My project needs a port to run a web server
+<claude>: Using allocate_port tool
   project: "my-app"
   service: "web-server"
   preferred_port: 3000
-<result>: Port 3000 已分配給 my-app/web-server
+<result>: Port 3000 allocated to my-app/web-server
 ```
 
 ### 2. register_tunnel
 
-**用途**: 註冊 Cloudflare Tunnel 配置
+**Purpose**: Register a Cloudflare Tunnel configuration
 
-**輸入參數**:
+**Input parameters**:
 ```json
 {
   "project": "string (required)",
@@ -329,7 +329,7 @@ servers:
 }
 ```
 
-**輸出**:
+**Output**:
 ```json
 {
   "success": true,
@@ -343,9 +343,9 @@ servers:
 
 ### 3. deploy_tunnel
 
-**用途**: 部署 Cloudflare Tunnel 到 VPS 伺服器
+**Purpose**: Deploy a Cloudflare Tunnel to a VPS server
 
-**輸入參數**:
+**Input parameters**:
 ```json
 {
   "tunnel_name": "string (required, must be registered first)",
@@ -353,7 +353,7 @@ servers:
 }
 ```
 
-**輸出**:
+**Output**:
 ```json
 {
   "success": true,
@@ -369,9 +369,9 @@ servers:
 
 ### 4. list_resources
 
-**用途**: 列出所有資源使用狀況
+**Purpose**: List all resource usage
 
-**輸入參數**:
+**Input parameters**:
 ```json
 {
   "resource_type": "all|port|tunnel|deployment (default: all)",
@@ -380,7 +380,7 @@ servers:
 }
 ```
 
-**輸出**:
+**Output**:
 ```json
 {
   "success": true,
@@ -418,7 +418,7 @@ servers:
 }
 ```
 
-完整 API 規格請參考 [`MCP-API.md`](./MCP-API.md)。
+See [`MCP-API.md`](./MCP-API.md) for the complete API specification.
 
 ---
 
@@ -426,28 +426,28 @@ servers:
 
 ### Authentication & Authorization
 
-**Phase 1** (當前設計):
-- MCP Server 運行在本地，只接受來自 Claude Desktop 的請求
-- SSH key-based 認證到 VPS 伺服器
-- Cloudflare API token 儲存在環境變數
+**Phase 1** (current design):
+- MCP Server runs locally and only accepts requests from Claude Desktop
+- SSH key-based authentication to VPS servers
+- Cloudflare API token stored in environment variables
 
-**Phase 2** (未來改進):
-- 支援多用戶（team members）
-- 基於角色的權限控制（RBAC）
-- 審計日誌記錄所有資源操作
+**Phase 2** (future improvements):
+- Multi-user support (team members)
+- Role-based access control (RBAC)
+- Audit logs for all resource operations
 
 ### Secrets Management
 
 - SSH private keys: `~/.ssh/id_ed25519`
-- Cloudflare API token: 環境變數 `CLOUDFLARE_API_TOKEN`
-- VPS sudo 密碼: 環境變數（prod 有 NOPASSWD sudo，暫不需要）
-- 未來: 考慮使用 HashiCorp Vault 或 1Password CLI
+- Cloudflare API token: environment variable `CLOUDFLARE_API_TOKEN`
+- VPS sudo password: environment variable (prod has NOPASSWD sudo, not needed currently)
+- Future: consider HashiCorp Vault or 1Password CLI
 
 ### Network Security
 
-- 所有 VPS 只開放 SSH port 22
-- Web 流量全部透過 Cloudflare Tunnel (Zero Trust)
-- Tunnel 憑證檔案權限設為 600 (僅 owner 可讀寫)
+- All VPS servers only open SSH port 22
+- All web traffic goes through Cloudflare Tunnel (Zero Trust)
+- Tunnel credential file permissions set to 600 (owner read/write only)
 
 ---
 
@@ -462,52 +462,52 @@ python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 設定環境變數
+# Set environment variables
 export CLOUDFLARE_API_TOKEN="your_token_here"
 
-# 啟動 MCP server
+# Start MCP server
 python main/mcp_server.py
 ```
 
 ### Production Environment
 
-**MCP Server 運行位置**: 本地開發機（Mac）
-- 原因: MCP Server 需要與 Claude Desktop 整合
-- 資料庫: 本地 JSON 檔案（Phase 1）或 SQLite（Phase 2）
+**MCP Server location**: Local development machine (Mac)
+- Reason: MCP Server needs to integrate with Claude Desktop
+- Database: Local JSON file (Phase 1) or SQLite (Phase 2)
 
-**資源部署目標**: VPS 伺服器（prod 等）
-- 透過 SSH 遠端部署
-- systemd 管理服務生命週期
+**Resource deployment target**: VPS servers (prod, etc.)
+- Remote deployment via SSH
+- systemd manages service lifecycle
 
-**未來考慮**:
-- MCP Server 可以部署到雲端（支援遠端 team）
-- 使用 HTTPS 和 authentication token 保護
+**Future considerations**:
+- MCP Server can be deployed to the cloud (for remote team support)
+- Protect with HTTPS and authentication tokens
 
 ---
 
 ## 📈 Scalability Plan
 
-### 支援多台 VPS
+### Multi-VPS Support
 
 ```yaml
 servers:
   prod:
-    # ... 現有配置
+    # ... existing config
 
   server2:
     hostname: server2.your-domain.com
-    # ... 新伺服器配置
+    # ... new server config
 
   server3:
     hostname: server3.your-domain.com
-    # ... 新伺服器配置
+    # ... new server config
 ```
 
-Resource Manager 會自動：
-- 選擇負載最低的伺服器
-- 或由用戶指定部署目標伺服器
+Resource Manager will automatically:
+- Select the server with the lowest load
+- Or let the user specify the target server
 
-### 支援多個 Cloudflare 帳號
+### Multiple Cloudflare Accounts
 
 ```yaml
 cloudflare_accounts:
@@ -524,37 +524,37 @@ cloudflare_accounts:
       - client-domain.com
 ```
 
-### Port Pool 擴展
+### Port Pool Expansion
 
-當單一伺服器 port 不足時：
-- 自動分配到其他 VPS
-- 或提示用戶擴展伺服器數量
+When a single server runs low on ports:
+- Automatically allocate on other VPS servers
+- Or prompt the user to add more servers
 
 ---
 
 ## 🎯 Success Metrics
 
-### Phase 1 完成標準
+### Phase 1 Completion Criteria
 
-- ✅ 成功透過 MCP tools 分配至少 5 個 ports
-- ✅ 成功註冊至少 3 個 Cloudflare Tunnels
-- ✅ 成功部署至少 2 個應用到 prod
-- ✅ Zero port 衝突、zero subdomain 碰撞
-- ✅ 完整的資源使用記錄（可追溯）
+- ✅ Successfully allocate at least 5 ports via MCP tools
+- ✅ Successfully register at least 3 Cloudflare Tunnels
+- ✅ Successfully deploy at least 2 applications to prod
+- ✅ Zero port conflicts, zero subdomain collisions
+- ✅ Full resource usage records (traceable)
 
-### Phase 2 目標
+### Phase 2 Goals
 
-- 📊 支援至少 3 台 VPS 伺服器
-- 📊 管理超過 20 個活躍 tunnels
-- 📊 資源使用 dashboard（Web UI）
-- 📊 自動化資源回收機制
+- 📊 Support at least 3 VPS servers
+- 📊 Manage 20+ active tunnels
+- 📊 Resource usage dashboard (Web UI)
+- 📊 Automated resource reclamation
 
-### Phase 3 願景
+### Phase 3 Vision
 
-- 💡 支援整個組織（10+ team members）
-- 💡 整合 CI/CD pipeline
-- 💡 成本追蹤和優化建議
-- 💡 災難恢復和高可用性
+- 💡 Support an entire organization (10+ team members)
+- 💡 CI/CD pipeline integration
+- 💡 Cost tracking and optimization recommendations
+- 💡 Disaster recovery and high availability
 
 ---
 
@@ -563,11 +563,9 @@ cloudflare_accounts:
 - [Model Context Protocol (MCP) Documentation](https://modelcontextprotocol.io/)
 - [Cloudflare Tunnel Documentation](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/)
 - [systemd Service Management](https://www.freedesktop.org/software/systemd/man/systemd.service.html)
-- [VPS Tunnel Management Skill](~/.claude/skills/vps-tunnel-management/SKILL.md)
-- [Local Tunnel Management Skill](~/.claude/skills/tunnel-management/SKILL.md)
 
 ---
 
-**文檔維護**: 隨專案演進持續更新
-**下次審查**: 2025-01-15
-**維護責任**: Infrastructure Team
+**Document maintenance**: Updated as the project evolves
+**Next review**: 2025-01-15
+**Maintainer**: Infrastructure Team

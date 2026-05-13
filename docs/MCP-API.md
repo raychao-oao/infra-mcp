@@ -1,21 +1,21 @@
 # MCP Tools API Specification
 
-**文檔版本**: v1.0
-**最後更新**: 2025-12-28
-**狀態**: Design Phase
+**Document version**: v1.0
+**Last updated**: 2025-12-28
+**Status**: Design Phase
 
 ---
 
 ## 📖 Overview
 
-本文檔詳細定義 Infrastructure MCP Server 提供的所有 tools，包括輸入參數、輸出格式、錯誤處理和使用範例。
+This document defines all tools provided by the Infrastructure MCP Server, including input parameters, output formats, error handling, and usage examples.
 
-### Tool 列表
+### Tool List
 
-1. **allocate_port** - Port 資源分配
-2. **register_tunnel** - Cloudflare Tunnel 註冊
-3. **deploy_tunnel** - Cloudflare Tunnel 部署到 VPS
-4. **list_resources** - 資源使用查詢
+1. **allocate_port** - Port resource allocation
+2. **register_tunnel** - Cloudflare Tunnel registration
+3. **deploy_tunnel** - Deploy Cloudflare Tunnel to VPS
+4. **list_resources** - Resource usage query
 
 ---
 
@@ -23,13 +23,13 @@
 
 ### Description
 
-為專案的特定服務分配一個可用的 port。支援用戶指定偏好 port（如果可用），否則自動從 port pool 分配下一個可用 port。
+Allocates an available port for a specific project service. Supports a preferred port (used if available); otherwise automatically allocates the next available port from the pool.
 
 ### Use Cases
 
-- 新專案需要 port 運行 web server
-- 同一專案內的多個服務（frontend, backend, admin）需要不同 ports
-- 開發環境需要與生產環境不同的 port
+- New project needs a port to run a web server
+- Multiple services within a project (frontend, backend, admin) need separate ports
+- Development environment needs a different port from production
 
 ### Input Schema
 
@@ -109,10 +109,10 @@
 
 ### Usage Examples
 
-#### Example 1: 分配偏好 port（成功）
+#### Example 1: Allocate preferred port (success)
 
 ```
-User: 我的專案 my-app 需要一個 port 來運行 web server，希望使用 3000
+User: My project my-app needs a port to run a web server, I'd like port 3000
 
 Claude uses allocate_port:
 {
@@ -131,10 +131,10 @@ Result:
 }
 ```
 
-#### Example 2: 分配偏好 port（已被使用，自動分配下一個）
+#### Example 2: Preferred port taken — auto-allocate next available
 
 ```
-User: pac 專案需要一個 port，希望用 8080
+User: The pac project needs a port, I'd like 8080
 
 Claude uses allocate_port:
 {
@@ -166,10 +166,10 @@ Result:
 }
 ```
 
-#### Example 3: 自動分配（不指定偏好）
+#### Example 3: Auto-allocate (no preferred port)
 
 ```
-User: sandbox 專案需要兩個 ports，一個給 frontend，一個給 backend
+User: The sandbox project needs two ports — one for frontend, one for backend
 
 Claude uses allocate_port (first call):
 {
@@ -204,13 +204,13 @@ Result:
 
 ### Description
 
-註冊一個 Cloudflare Tunnel 配置，包括建立 config YAML、設定 DNS CNAME 記錄、準備 systemd service 檔案。
+Registers a Cloudflare Tunnel configuration — creates the config YAML, sets up a DNS CNAME record, and prepares the systemd service file.
 
 ### Use Cases
 
-- 新專案需要對外提供服務（透過 Zero Trust）
-- 現有專案新增 subdomain
-- 更新現有 tunnel 的 target port
+- New project needs to be accessible externally (via Zero Trust)
+- Adding a new subdomain to an existing project
+- Updating the target port of an existing tunnel
 
 ### Input Schema
 
@@ -316,10 +316,10 @@ Result:
 
 ### Usage Examples
 
-#### Example 1: 註冊新 tunnel（完整流程）
+#### Example 1: Register a new tunnel (full workflow)
 
 ```
-User: my-app 專案已經分配了 port 3000，現在需要設定 tunnel，domain 用 my-app.your-domain.com
+User: The my-app project already has port 3000 allocated, now needs a tunnel at my-app.your-domain.com
 
 Claude uses register_tunnel:
 {
@@ -347,10 +347,10 @@ Result:
 }
 ```
 
-#### Example 2: 使用現有 tunnel credentials
+#### Example 2: Use existing tunnel credentials
 
 ```
-User: pac 專案要遷移到 prod，使用現有的 tunnel ID 0a1a62fb-0ad5-4f6a-9e8c-f0129fcbaf92
+User: The pac project is migrating to prod using existing tunnel ID 0a1a62fb-0ad5-4f6a-9e8c-f0129fcbaf92
 
 Claude uses register_tunnel:
 {
@@ -380,18 +380,18 @@ Result:
 
 ### Description
 
-部署已註冊的 Cloudflare Tunnel 到 VPS 伺服器，包括：
-- 複製 tunnel config 到 VPS
-- 建立 cloudflared systemd service
-- 啟動 tunnel service
+Deploys a registered Cloudflare Tunnel to a VPS server:
+- Copies tunnel config to the VPS
+- Creates the cloudflared systemd service
+- Starts the tunnel service
 
-**注意**：此 tool 只部署 tunnel，不部署應用程式。應用程式請使用 `deploy_service` tool 或自行部署。
+**Note**: This tool deploys only the tunnel, not the application. Use `deploy_service` or deploy manually for the application.
 
 ### Use Cases
 
-- 部署 Cloudflare Tunnel 到 VPS
-- 啟動已註冊的 tunnel service
-- 在 VPS 重啟後重新部署 tunnel
+- Deploy a Cloudflare Tunnel to a VPS
+- Start a registered tunnel service
+- Re-deploy a tunnel after a VPS reboot
 
 ### Input Schema
 
@@ -459,10 +459,10 @@ Result:
 
 ### Usage Examples
 
-#### Example 1: 部署已註冊的 tunnel
+#### Example 1: Deploy a registered tunnel
 
 ```
-User: 部署 my-app tunnel 到 prod
+User: Deploy the my-app tunnel to prod
 
 Prerequisites:
 - Tunnel 'my-app' already registered via register_tunnel
@@ -487,10 +487,10 @@ Result:
 }
 ```
 
-#### Example 2: 部署 tunnel 到 prod（default server）
+#### Example 2: Deploy tunnel to prod (default server)
 
 ```
-User: 啟動 pac tunnel
+User: Start the pac tunnel
 
 Claude uses deploy_tunnel:
 {
@@ -516,14 +516,14 @@ Result:
 
 ### Description
 
-查詢資源使用狀況，包括已分配的 ports、已註冊的 tunnels、已部署的應用。支援過濾和統計。
+Queries resource usage — allocated ports, registered tunnels, deployed applications. Supports filtering and statistics.
 
 ### Use Cases
 
-- 檢查某個 port 是否已被使用
-- 查看專案使用了哪些資源
-- 查看某台 VPS 上部署了哪些應用
-- 資源使用統計
+- Check whether a specific port is in use
+- See what resources a project is using
+- See what applications are deployed on a VPS
+- Resource usage statistics
 
 ### Input Schema
 
@@ -674,10 +674,10 @@ Result:
 
 ### Usage Examples
 
-#### Example 1: 查看所有資源
+#### Example 1: View all resources
 
 ```
-User: 顯示所有基礎設施資源使用狀況
+User: Show all infrastructure resource usage
 
 Claude uses list_resources:
 {
@@ -687,10 +687,10 @@ Claude uses list_resources:
 Result: (see Output Schema above)
 ```
 
-#### Example 2: 查看特定專案的資源
+#### Example 2: View resources for a specific project
 
 ```
-User: my-app 專案使用了哪些資源？
+User: What resources is the my-app project using?
 
 Claude uses list_resources:
 {
@@ -732,10 +732,10 @@ Result:
 }
 ```
 
-#### Example 3: 檢查特定 port 是否可用
+#### Example 3: Check if a specific port is available
 
 ```
-User: Port 3500 可以用嗎？
+User: Is port 3500 available?
 
 Claude uses list_resources:
 {
@@ -746,13 +746,13 @@ Claude analyzes result:
 - Port 3500 not in the allocated ports list
 - Therefore it's available
 
-Response: "Port 3500 目前可用，尚未被任何專案使用。"
+Response: "Port 3500 is available — not currently used by any project."
 ```
 
-#### Example 4: 查看 prod 伺服器上的部署
+#### Example 4: View deployments on prod server
 
 ```
-User: prod 上部署了哪些應用？
+User: What applications are deployed on prod?
 
 Claude uses list_resources:
 {
@@ -797,27 +797,27 @@ Result:
 
 ## 🔄 Tool Interaction Workflows
 
-### 完整部署流程（新專案）
+### Full Deployment Workflow (New Project)
 
 ```mermaid
 graph TD
-    A[User: 需要部署新專案] --> B[allocate_port]
-    B --> C{Port 分配成功?}
-    C -->|Yes| D[手動部署應用或使用 deployment scripts]
+    A[User: Need to deploy new project] --> B[allocate_port]
+    B --> C{Port allocated?}
+    C -->|Yes| D[Deploy application manually or via scripts]
     C -->|No| B
     D --> E[register_tunnel]
-    E --> F{Tunnel 註冊成功?}
+    E --> F{Tunnel registered?}
     F -->|Yes| G[deploy_tunnel]
     F -->|No| E
-    G --> H{Tunnel 部署成功?}
-    H -->|Yes| I[專案上線]
-    H -->|No| J[檢查 logs 除錯]
+    G --> H{Tunnel deployed?}
+    H -->|Yes| I[Project live]
+    H -->|No| J[Check logs and debug]
     J --> G
 ```
 
-**實際範例**:
+**Practical example**:
 ```
-1. User: "部署 my-new-app 到 prod，使用 domain mynewapp.your-domain.com"
+1. User: "Deploy my-new-app to prod using domain mynewapp.your-domain.com"
 
 2. Claude:
    Step 1: allocate_port
@@ -837,7 +837,7 @@ graph TD
    }
    → Tunnel registered, DNS configured
 
-   Step 3: 部署應用（手動或使用 deployment scripts）
+   Step 3: Deploy application (manually or via deployment scripts)
    bash scripts/deploy/deploy-flask.sh \
      --project my-new-app \
      --port 3500 \
@@ -851,62 +851,62 @@ graph TD
    }
    → Tunnel deployed successfully
 
-3. Result: "my-new-app 已成功部署到 prod，可透過 https://mynewapp.your-domain.com 訪問"
+3. Result: "my-new-app is now live on prod at https://mynewapp.your-domain.com"
 ```
 
 ---
 
 ## 📚 Best Practices
 
-### 1. 資源命名規範
+### 1. Resource Naming Conventions
 
 **Project names**:
-- 小寫字母、數字、連字號
-- 範例: `my-app`, `pac`, `sandbox`
+- Lowercase letters, numbers, hyphens
+- Examples: `my-app`, `pac`, `sandbox`
 
 **Service names**:
-- 描述性名稱
-- 範例: `web-server`, `api`, `admin`, `worker`
+- Descriptive names
+- Examples: `web-server`, `api`, `admin`, `worker`
 
 **Tunnel names**:
-- 通常與 project name 相同或簡短版本
-- 範例: `my-app`, `pac`, `sandbox`, `myapp`
+- Usually matches or abbreviates the project name
+- Examples: `my-app`, `pac`, `sandbox`, `myapp`
 
 **Hostnames**:
-- 使用 `<name>.your-domain.com` 作為服務網址
-- 範例: `my-app.your-domain.com`, `api.your-domain.com`
+- Use `<name>.your-domain.com` as the service URL
+- Examples: `my-app.your-domain.com`, `api.your-domain.com`
 
-### 2. Port 分配策略
+### 2. Port Allocation Strategy
 
-- **Preferred port** 優先使用標準 ports:
-  - 3000: 常見 Node.js/React dev server
-  - 5000: 常見 Flask default
-  - 8080: 常見 HTTP alternate
-  - 8000: 常見 Django default
+- **Preferred port** — use standard ports when possible:
+  - 3000: Common Node.js/React dev server
+  - 5000: Common Flask default
+  - 8080: Common HTTP alternate
+  - 8000: Common Django default
 
-- **Auto-allocation** 當偏好 port 不可用時，讓系統自動分配
+- **Auto-allocation** — when the preferred port is unavailable, let the system allocate
 
-### 3. 錯誤處理
+### 3. Error Handling
 
-- 總是檢查 tool 回應的 `success` 欄位
-- 當 `success: false` 時，讀取 `error` 和 `message` 了解原因
-- 根據 `suggestion` 欄位調整策略
+- Always check the `success` field in tool responses
+- When `success: false`, read `error` and `message` to understand the cause
+- Adjust strategy based on the `suggestion` field
 
-### 4. 資源清理
+### 4. Resource Cleanup
 
-未來將提供 `release_port`, `unregister_tunnel`, `undeploy_from_vps` tools 來回收資源。
+Future `release_port`, `unregister_tunnel`, and `undeploy_from_vps` tools will be provided for resource reclamation.
 
 ---
 
 ## 📝 Changelog
 
 ### v1.0 (2025-12-28)
-- 初始版本
-- 定義 4 個核心 MCP tools
-- 完整 API schema 和使用範例
+- Initial version
+- Defined 4 core MCP tools
+- Complete API schema and usage examples
 
 ---
 
-**文檔維護**: 隨 MCP Server 實作更新
-**下次審查**: Phase 1 實作完成後
-**維護責任**: Infrastructure Team
+**Document maintenance**: Updated as the MCP Server implementation evolves
+**Next review**: After Phase 1 implementation is complete
+**Maintainer**: Infrastructure Team
