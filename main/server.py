@@ -129,10 +129,16 @@ from main.tools.cloudflare.tunnel import (
     delete_cloudflare_tunnel,
     list_cloudflare_tunnels,
     get_tunnel_token,
+    list_public_hostnames,
+    add_public_hostname,
+    remove_public_hostname,
     validate_create_cloudflare_tunnel_input,
     validate_delete_cloudflare_tunnel_input,
     validate_list_cloudflare_tunnels_input,
     validate_get_tunnel_token_input,
+    validate_list_public_hostnames_input,
+    validate_add_public_hostname_input,
+    validate_remove_public_hostname_input,
 )
 # Import Gitea tools
 from main.tools.gitea.create_repo import create_gitea_repo
@@ -1207,6 +1213,71 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     }
                 },
                 {
+                    "name": "list_public_hostnames",
+                    "description": "List all public hostnames configured for a remotely-managed Cloudflare Tunnel",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "tunnel_id": {
+                                "type": "string",
+                                "description": "Tunnel ID"
+                            },
+                            "tunnel_name": {
+                                "type": "string",
+                                "description": "Tunnel name (if tunnel_id not provided)"
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "add_public_hostname",
+                    "description": "Add a public hostname to a remotely-managed Cloudflare Tunnel (updates CF-side config, no config.yml needed)",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "hostname": {
+                                "type": "string",
+                                "description": "Public hostname (e.g., 'app.your-domain.com')"
+                            },
+                            "service": {
+                                "type": "string",
+                                "description": "Backend service URL (default: 'http://localhost:80')"
+                            },
+                            "tunnel_id": {
+                                "type": "string",
+                                "description": "Tunnel ID"
+                            },
+                            "tunnel_name": {
+                                "type": "string",
+                                "description": "Tunnel name (if tunnel_id not provided)"
+                            }
+                        },
+                        "required": ["hostname"]
+                    }
+                },
+                {
+                    "name": "remove_public_hostname",
+                    "description": "Remove a public hostname from a remotely-managed Cloudflare Tunnel",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "hostname": {
+                                "type": "string",
+                                "description": "Public hostname to remove"
+                            },
+                            "tunnel_id": {
+                                "type": "string",
+                                "description": "Tunnel ID"
+                            },
+                            "tunnel_name": {
+                                "type": "string",
+                                "description": "Tunnel name (if tunnel_id not provided)"
+                            }
+                        },
+                        "required": ["hostname"]
+                    }
+                },
+                {
                     "name": "create_gitea_repo",
                     "description": "Create a new repository in Gitea",
                     "inputSchema": {
@@ -1690,6 +1761,24 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     raise InvalidParamsError(str(validation.get('errors')))
 
                 result = await get_tunnel_token(**arguments)
+
+            elif tool_name == "list_public_hostnames":
+                validation = validate_list_public_hostnames_input(arguments)
+                if not validation.get("valid"):
+                    raise InvalidParamsError(str(validation.get('errors')))
+                result = await list_public_hostnames(**arguments)
+
+            elif tool_name == "add_public_hostname":
+                validation = validate_add_public_hostname_input(arguments)
+                if not validation.get("valid"):
+                    raise InvalidParamsError(str(validation.get('errors')))
+                result = await add_public_hostname(**arguments)
+
+            elif tool_name == "remove_public_hostname":
+                validation = validate_remove_public_hostname_input(arguments)
+                if not validation.get("valid"):
+                    raise InvalidParamsError(str(validation.get('errors')))
+                result = await remove_public_hostname(**arguments)
 
             elif tool_name == "create_gitea_repo":
                 result = await create_gitea_repo(

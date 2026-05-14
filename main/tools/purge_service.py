@@ -407,26 +407,27 @@ async def remove_dns_cname_record(
     server: str
 ) -> Dict[str, Any]:
     """
-    Remove DNS CNAME record from Cloudflare.
+    Remove public hostname from remotely-managed tunnel and its DNS CNAME.
 
     Args:
         hostname: Hostname to remove
-        server: VPS server name
+        server: VPS server name (used to derive tunnel name {server}-main)
 
     Returns:
         Dict with success status
     """
-
-    from main.tools.cloudflare.dns import delete_dns_record
+    from main.tools.cloudflare.tunnel import remove_public_hostname
 
     try:
-        result = await delete_dns_record(record_name=hostname)
-        return result
-
+        return await remove_public_hostname(
+            hostname=hostname,
+            tunnel_name=f"{server}-main",
+            delete_dns=True,
+        )
     except Exception as e:
         return {
             "success": False,
-            "message": f"Failed to remove DNS record: {str(e)}"
+            "message": f"Failed to remove public hostname: {str(e)}"
         }
 
 

@@ -28,6 +28,7 @@ from typing import Optional, Dict, Any
 from main.db.sqlite_store import SQLiteStore
 from main.providers.ssh_provider import async_run_command
 from main.tools.allocate_port import allocate_port
+from main.tools.cloudflare.tunnel import add_public_hostname
 from main.utils import get_service_name, q, validate_hostname, validate_safe_string, validate_config_value, validate_identifier
 from main.config import INFRA_SERVERS, INFRA_DEFAULT_SERVER
 
@@ -629,27 +630,27 @@ async def deploy_service(
             deployment_info["port"] = deployment.port
             steps_completed.append("port_already_allocated")
 
-        # Step 3: Add DNS CNAME record via cloudflared
+        # Step 3: Add public hostname to remotely-managed tunnel
+        # (sets ingress entry + DNS CNAME in one CF API call)
         if deployment.hostname:
             tunnel_name = TUNNEL_MAP.get(server, f"{server}-main")
             if tunnel_name:
-                dns_result = await create_dns_via_cloudflared(
-                    hostname=deployment.hostname,
-                    tunnel_name=tunnel_name,
-                    dns_server=DNS_SERVER
-                )
-
-                if not dns_result["success"]:
+                try:
+                    hostname_result = await add_public_hostname(
+                        hostname=deployment.hostname,
+                        service="http://localhost:80",
+                        tunnel_name=tunnel_name,
+                    )
+                except Exception as e:
                     return {
                         "success": False,
-                        "error": "DNS_RECORD_FAILED",
-                        "message": f"Failed to add DNS record: {dns_result.get('message')}",
+                        "error": "TUNNEL_HOSTNAME_FAILED",
+                        "message": f"Failed to add public hostname: {e}",
                         "steps_completed": steps_completed,
-                        "details": dns_result
                     }
 
-                steps_completed.append("dns_record_added")
-                deployment_info["dns"] = dns_result
+                steps_completed.append("public_hostname_added")
+                deployment_info["public_hostname"] = hostname_result
 
         # Step 4: Generate and write Caddy config
         caddy_result = await generate_and_write_caddy_config(
