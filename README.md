@@ -16,7 +16,7 @@ Think of it as the resource scheduler layer between your AI agent and your infra
 |----------|-------|
 | **Ports** | `allocate_port` `release_port` `check_listening_ports` |
 | **Services** | `register_service` `deploy_service` `restart_service` `stop_service` `purge_service` `upgrade_service` `get_service_info` `get_service_logs` `check_service_health` `audit_all_services` `validate_service_security` `get_caddy_config` |
-| **Tunnels** | `register_main_tunnel` `list_main_tunnels` `create_cloudflare_tunnel` `delete_cloudflare_tunnel` `list_cloudflare_tunnels` `get_tunnel_config` `get_tunnel_token` |
+| **Tunnels** | `register_main_tunnel` `list_main_tunnels` `create_cloudflare_tunnel` `delete_cloudflare_tunnel` `list_cloudflare_tunnels` `get_tunnel_config` `get_tunnel_token` `list_public_hostnames` `add_public_hostname` `remove_public_hostname` |
 | **DNS** | `create_dns_record` `update_dns_record` `delete_dns_record` `list_dns_records` |
 | **Access** | `create_access_application` `delete_access_application` `list_access_applications` `list_access_policies` |
 | **Git** | `create_gitea_repo` `list_gitea_repos` `get_gitea_repo` `delete_gitea_repo` |
