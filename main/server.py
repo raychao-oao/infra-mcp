@@ -216,7 +216,7 @@ if MCP_API_KEY:
     class APIKeyMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             # Skip auth for health endpoints and CORS preflight
-            if request.url.path in ("/", "/health") or request.method == "OPTIONS":
+            if request.scope["path"] in ("/", "/health") or request.method == "OPTIONS":
                 return await call_next(request)
             auth = request.headers.get("Authorization", "")
             token = auth[7:] if auth.startswith("Bearer ") else ""
