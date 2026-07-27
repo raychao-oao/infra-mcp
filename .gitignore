@@ -5,6 +5,10 @@ __pycache__/
 .env
 .env.local
 *.db
+# Runtime state, never in git. `*.db` alone missed resources.db.bak-<date>,
+# which left the full infrastructure inventory untracked-but-stageable in a
+# public repo.
+configs/
 *.sqlite
 *.sqlite3
 logs/
