@@ -88,7 +88,9 @@ async def audit_all_services(
         audit_results = []
         secure_count = 0
         vulnerable_count = 0
+        unverified_count = 0
         total_issues = 0
+        total_unverified = 0
         total_fixed = 0
         unreachable = []
 
@@ -118,14 +120,20 @@ async def audit_all_services(
                 snapshot=snapshots[srv]
             )
 
-            # Count results
-            if validation_result.get("security_status") == "SECURE":
+            # Count results. UNVERIFIED is tracked apart from VULNERABLE: a check
+            # that could not run is not a finding, and counting it as one makes
+            # the report cry wolf.
+            status = validation_result.get("security_status")
+            if status == "SECURE":
                 secure_count += 1
+            elif status == "UNVERIFIED":
+                unverified_count += 1
             else:
                 vulnerable_count += 1
                 total_issues += validation_result.get("issues_count", 0)
                 if auto_fix:
                     total_fixed += validation_result.get("fixed_count", 0)
+            total_unverified += validation_result.get("unverified_count", 0)
 
             # Add to results
             audit_results.append({
@@ -133,9 +141,10 @@ async def audit_all_services(
                 "service": service,
                 "server": srv,
                 "service_type": validation_result.get("service_type"),
-                "security_status": validation_result.get("security_status"),
+                "security_status": status,
                 "issues_count": validation_result.get("issues_count", 0),
                 "issues": validation_result.get("issues", []),
+                "unverified": validation_result.get("unverified", []),
                 "fixed_count": validation_result.get("fixed_count", 0) if auto_fix else None
             })
 
@@ -143,14 +152,19 @@ async def audit_all_services(
         # ones on an unreachable host would quietly deflate it and read as though
         # they had failed a check.
         audited_count = len(audit_results)
+        # Score over services that could actually be judged. Letting UNVERIFIED
+        # drag it down would report a records gap as a security regression.
+        judged = secure_count + vulnerable_count
         summary = {
             "total_services": len(audited_services),
             "audited_services": audited_count,
             "unreachable_services": len(unreachable),
             "secure_services": secure_count,
             "vulnerable_services": vulnerable_count,
+            "unverified_services": unverified_count,
             "total_issues": total_issues,
-            "security_score": round((secure_count / audited_count) * 100, 1) if audited_count else 0
+            "total_unverified_checks": total_unverified,
+            "security_score": round((secure_count / judged) * 100, 1) if judged else 0
         }
 
         if auto_fix:
@@ -165,21 +179,26 @@ async def audit_all_services(
                 by_server[srv] = {
                     "total": 0,
                     "secure": 0,
-                    "vulnerable": 0
+                    "vulnerable": 0,
+                    "unverified": 0
                 }
             by_server[srv]["total"] += 1
             if result["security_status"] == "SECURE":
                 by_server[srv]["secure"] += 1
+            elif result["security_status"] == "UNVERIFIED":
+                by_server[srv]["unverified"] += 1
             else:
                 by_server[srv]["vulnerable"] += 1
 
         # Build message
         if vulnerable_count == 0:
-            message = f"✅ All {audited_count} service(s) are secure"
+            message = f"✅ No security issues found in {audited_count} service(s)"
         else:
             message = f"⚠️ Found {vulnerable_count} vulnerable service(s) with {total_issues} issue(s)"
             if auto_fix and total_fixed > 0:
                 message += f" ({total_fixed} fixed, {total_issues - total_fixed} remaining)"
+        if unverified_count:
+            message += f" — {unverified_count} service(s) could not be fully verified"
         if unreachable:
             message += (
                 f" — {len(unreachable)} service(s) NOT audited, "
