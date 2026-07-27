@@ -1,0 +1,13 @@
+[Unit]
+Description=Check GitHub for infra-mcp updates
+
+[Timer]
+# First check shortly after boot, then every 15 minutes. RandomizedDelaySec
+# keeps several hosts from hitting GitHub on the same second.
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

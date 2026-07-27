@@ -1,0 +1,12 @@
+[Unit]
+Description=Pull infra-mcp updates from GitHub and deploy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=YOUR_USER
+WorkingDirectory=/home/YOUR_USER/infra-mcp
+ExecStart=/home/YOUR_USER/infra-mcp/deploy/auto-update.sh
+# Needs NOPASSWD sudo for `systemctl restart infra-mcp` only.
+TimeoutStartSec=300
