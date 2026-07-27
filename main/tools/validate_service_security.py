@@ -18,6 +18,7 @@ from typing import Optional, Dict, Any, List
 from main.db.sqlite_store import SQLiteStore
 from main.models.service_deployment import ServiceType
 from main.providers.ssh_provider import run_command
+from main.tools.check_listening_ports import _classify_address
 
 
 async def validate_service_security(
@@ -88,9 +89,23 @@ async def validate_service_security(
     # Check 3: Actual listening ports
     if port:
         port_check = await _check_actual_port_binding(server, port)
-        checks.append(port_check)
-        if not port_check["passed"]:
-            issues.extend(port_check["issues"])
+    else:
+        # No port on record means the binding cannot be verified. Treat that as a
+        # failed check, not a skipped one — "unknown" is not "safe". lion-punch/app
+        # had port=None and was one of the services found exposed on 2026-07-27,
+        # precisely because this check never ran for it.
+        port_check = {
+            "check": "actual_port_binding",
+            "passed": False,
+            "issues": [
+                f"No port recorded for {project}/{service}, so its actual binding "
+                f"could not be verified"
+            ],
+            "details": "Register the port with allocate_port to enable this check"
+        }
+    checks.append(port_check)
+    if not port_check["passed"]:
+        issues.extend(port_check["issues"])
 
     # Build result
     all_passed = len(issues) == 0
@@ -319,6 +334,8 @@ async def _check_actual_port_binding(server: str, port: int) -> Dict[str, Any]:
         result = run_command(server, f"sudo ss -tlnp | grep ':{int(port)} '", timeout=10)
 
         if result.returncode != 0:
+            # Not listening is not a security problem: a registered port whose
+            # service is stopped is expected (temporary demos, deliberate shutdowns).
             return {
                 "check": "actual_port_binding",
                 "passed": True,
@@ -327,20 +344,46 @@ async def _check_actual_port_binding(server: str, port: int) -> Dict[str, Any]:
 
         output = result.stdout
 
-        # Check if port is bound to 127.0.0.1
-        if "127.0.0.1:" in output:
-            return {
-                "check": "actual_port_binding",
-                "passed": True,
-                "details": f"Port {port} correctly bound to 127.0.0.1"
-            }
-        else:
+        # Classify every listening address on this port, not the blob of output.
+        # A substring test for "127.0.0.1:" passes as soon as *any* line is loopback,
+        # so a service listening on both 127.0.0.1 and 0.0.0.0 slipped through; it
+        # also flagged deliberate Tailscale binds as insecure.
+        exposed = []
+        addresses = []
+        for line in output.strip().split("\n"):
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            match = re.match(r"(.*):(\d+)$", parts[3])
+            if not match:
+                continue
+            addr = match.group(1)
+            level, note = _classify_address(addr)
+            addresses.append(f"{addr} ({level})")
+            if level in ("high", "unknown"):
+                exposed.append(f"{addr}: {note}")
+
+        if not addresses:
             return {
                 "check": "actual_port_binding",
                 "passed": False,
-                "issues": [f"Port {port} NOT bound to 127.0.0.1"],
-                "details": f"Actual binding: {output.strip()}"
+                "issues": [f"Could not parse any listening address for port {port}"],
+                "details": f"Raw output: {output.strip()}"
             }
+
+        if exposed:
+            return {
+                "check": "actual_port_binding",
+                "passed": False,
+                "issues": [f"Port {port} exposed — {e}" for e in exposed],
+                "details": f"Listening addresses: {', '.join(addresses)}"
+            }
+
+        return {
+            "check": "actual_port_binding",
+            "passed": True,
+            "details": f"Port {port} not publicly reachable: {', '.join(addresses)}"
+        }
 
     except Exception as e:
         return {
