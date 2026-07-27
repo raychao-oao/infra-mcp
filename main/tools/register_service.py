@@ -40,6 +40,11 @@ def _generate_default_paths(project: str, service_type: str) -> Dict[str, Option
     - `log_path` was defaulted to `/var/log/{project}/`, which nothing creates —
       so purge_service would offer to delete a directory that never existed, and
       get_service_info reported it as if it did.
+    - `app_path`/`data_path`/`config_path` under `~/PRJ/{project}/` are only real
+      because deploy_service creates them. A **docker** service is not deployed
+      that way — it comes up from a compose file wherever its author put it. The
+      RSS stack on world got `~/PRJ/rss-stack/app/` on 2026-07-27 while that host
+      has no `~/PRJ` directory at all; its compose lives in `~/rss-stack/main`.
 
     Args:
         project: Project name
@@ -50,18 +55,26 @@ def _generate_default_paths(project: str, service_type: str) -> Dict[str, Option
     """
     paths: Dict[str, Optional[str]] = {
         "static_path": None,
-        "app_path": f"~/PRJ/{project}/app/",
-        "data_path": f"~/PRJ/{project}/data/",
+        "app_path": None,
+        "data_path": None,
         "log_path": None,
-        "config_path": f"~/PRJ/{project}/config/",
+        "config_path": None,
     }
+
+    # Docker services are brought up from a compose file that this server never
+    # placed and cannot locate. Guess nothing; let the caller say where it is.
+    if service_type == "docker":
+        return paths
 
     if service_type in STATIC_SERVING_TYPES:
         paths["static_path"] = f"/var/www/{project}/"
 
+    paths["data_path"] = f"~/PRJ/{project}/data/"
+    paths["config_path"] = f"~/PRJ/{project}/config/"
+
     # Static-only services don't need app_path
-    if service_type == "static":
-        paths["app_path"] = None
+    if service_type != "static":
+        paths["app_path"] = f"~/PRJ/{project}/app/"
 
     return paths
 
