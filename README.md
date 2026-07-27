@@ -12,10 +12,13 @@ Think of it as the resource scheduler layer between your AI agent and your infra
 
 ## Tools
 
+41 tools, grouped by what they manage:
+
 | Category | Tools |
 |----------|-------|
-| **Ports** | `allocate_port` `release_port` `check_listening_ports` |
-| **Services** | `register_service` `deploy_service` `restart_service` `stop_service` `purge_service` `upgrade_service` `get_service_info` `get_service_logs` `check_service_health` `audit_all_services` `validate_service_security` `get_caddy_config` |
+| **Ports** | `allocate_port` `release_port` `reconcile_ports` `check_listening_ports` |
+| **Services** | `register_service` `update_service` `deploy_service` `restart_service` `stop_service` `purge_service` `upgrade_service` `get_service_info` `get_service_logs` `check_service_health` `get_caddy_config` |
+| **Security** | `audit_all_services` `validate_service_security` `check_firewall` |
 | **Tunnels** | `register_main_tunnel` `list_main_tunnels` `create_cloudflare_tunnel` `delete_cloudflare_tunnel` `list_cloudflare_tunnels` `get_tunnel_config` `get_tunnel_token` `list_public_hostnames` `add_public_hostname` `remove_public_hostname` |
 | **DNS** | `create_dns_record` `update_dns_record` `delete_dns_record` `list_dns_records` |
 | **Access** | `create_access_application` `delete_access_application` `list_access_applications` `list_access_policies` |
@@ -90,6 +93,29 @@ Internet → Cloudflare Access (auth) → Cloudflare Tunnel → localhost:8000/m
 Any reverse proxy with authentication works: Cloudflare Access, nginx + auth, Tailscale, etc.
 
 **Never expose `/mcp` without authentication.**
+
+### Auditing what you deployed
+
+Three tools answer "is any of this exposed?", and they are built to be run often:
+
+```
+audit_all_services   every recorded service on a server: bind address, Caddy site, systemd unit
+check_firewall       is there a working, persistent packet filter — not just an enabled service
+reconcile_ports      what is listening vs what the registry believes
+```
+
+`audit_all_services` reports **three** outcomes, not two: `SECURE`, `VULNERABLE`, and
+`UNVERIFIED`. "I could not determine the bind address" is neither a clean bill of health nor
+a finding, and collapsing it into either one is how a security report stops being read. The
+score is computed over what could actually be judged.
+
+The checks **locate** what they inspect rather than deriving filenames from project and
+service names — Caddy sites are found by hostname, port and static root; systemd units by
+`WorkingDirectory` and `ExecStart`. An earlier version guessed `{project}-{service}.caddy`,
+found nothing, and scored every service `0.0`.
+
+One `ServerSnapshot` per server, not per check: a full fleet audit is a few seconds, because
+a slow audit gets skipped as surely as a noisy one.
 
 ## Production Deployment
 

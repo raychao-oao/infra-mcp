@@ -35,16 +35,15 @@ def _generate_default_paths(project: str, service_type: str) -> Dict[str, Option
 
     - `static_path` on a pure flask/nodejs/docker service made deploy_service
       create `/var/www/{project}/` and symlink `~/PRJ/{project}/www` to it, for a
-      service with no static files at all. knowledge-factory carries such a path
-      today, registered 2026-07-27.
+      service with no static files at all.
     - `log_path` was defaulted to `/var/log/{project}/`, which nothing creates —
       so purge_service would offer to delete a directory that never existed, and
       get_service_info reported it as if it did.
     - `app_path`/`data_path`/`config_path` under `~/PRJ/{project}/` are only real
       because deploy_service creates them. A **docker** service is not deployed
-      that way — it comes up from a compose file wherever its author put it. The
-      RSS stack on world got `~/PRJ/rss-stack/app/` on 2026-07-27 while that host
-      has no `~/PRJ` directory at all; its compose lives in `~/rss-stack/main`.
+      that way — it comes up from a compose file wherever its author put it.
+      Registering one produced `~/PRJ/{project}/app/` on a host with no `~/PRJ`
+      directory at all.
 
     Args:
         project: Project name

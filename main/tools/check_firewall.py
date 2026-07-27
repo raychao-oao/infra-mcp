@@ -16,13 +16,13 @@ So this tool refuses to ask "is the firewall service enabled". It asks:
   1. Is there a terminal REJECT/DROP, or a default-deny policy? That is the
      only thing that actually blocks a packet.
   2. Are the persistence packages really installed (`ii`, not `rc`)? Without
-     them the rules are gone at the next reboot — hello was in exactly this
-     state, protected until it restarted.
+     them the rules are gone at the next reboot. One host was in exactly this
+     state: protected right up until it restarted.
   3. Does anything claim to be a firewall while not being one? A `rc`-state
      package or an ENABLED=yes config with no binary is worse than nothing,
      because it answers "yes" when asked.
-  4. Is IPv6 covered too? Purging ufw on hello left the v6 INPUT chain wide
-     open with policy ACCEPT while v4 looked fine.
+  4. Is IPv6 covered too? Purging ufw on one host left the v6 INPUT chain
+     wide open with policy ACCEPT while v4 looked fine.
 """
 
 import re
@@ -122,7 +122,7 @@ def _assess(firewall: Dict[str, str]) -> Dict[str, Any]:
     if not v4["protected"]:
         issues.append(f"IPv4 INPUT is not filtered: {v4['reason']}")
     if not v6["protected"]:
-        # Its own finding, not a footnote: purging ufw left hello's v6 chain at
+        # Its own finding, not a footnote: purging ufw left a host's v6 chain at
         # policy ACCEPT with no rules while v4 looked healthy.
         issues.append(f"IPv6 INPUT is not filtered: {v6['reason']}")
 

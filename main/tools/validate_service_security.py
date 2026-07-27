@@ -130,9 +130,9 @@ async def validate_service_security(
         })
     else:
         # No port on record means the binding cannot be verified. Not a silent
-        # skip — lion-punch/app had port=None and was one of the services found
-        # exposed on 2026-07-27 precisely because this check never ran for it —
-        # but a gap in the records is not itself a vulnerability.
+        # skip — one of the services found exposed on 2026-07-27 had port=None,
+        # and stayed hidden precisely because this check never ran for it — but a
+        # gap in the records is not itself a vulnerability.
         record({
             "check": "actual_port_binding",
             "passed": False,

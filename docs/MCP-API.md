@@ -17,8 +17,8 @@ The Infrastructure MCP Server exposes **38 tools** via JSON-RPC 2.0 over HTTP.
 
 | Category | Tools | Count |
 |----------|-------|-------|
-| [Port Management](#port-management) | allocate_port, release_port, check_listening_ports | 3 |
-| [Service Management](#service-management) | register_service, deploy_service, stop_service, purge_service, upgrade_service, get_service_info, get_service_logs, check_service_health, validate_service_security, audit_all_services, get_caddy_config, restart_service | 12 |
+| [Port Management](#port-management) | allocate_port, release_port, reconcile_ports, check_listening_ports | 4 |
+| [Service Management](#service-management) | register_service, update_service, deploy_service, stop_service, purge_service, upgrade_service, get_service_info, get_service_logs, check_service_health, validate_service_security, audit_all_services, check_firewall, get_caddy_config, restart_service | 14 |
 | [Tunnel Registry](#tunnel-registry) | register_main_tunnel, list_main_tunnels, get_tunnel_config | 3 |
 | [Cloudflare Tunnel API](#cloudflare-tunnel-api) | create_cloudflare_tunnel, delete_cloudflare_tunnel, list_cloudflare_tunnels, get_tunnel_token, list_public_hostnames, add_public_hostname, remove_public_hostname | 7 |
 | [DNS Management](#dns-management) | create_dns_record, update_dns_record, delete_dns_record, list_dns_records | 4 |
@@ -55,9 +55,21 @@ Release a port allocation and return it to the pool.
 
 ---
 
+### `reconcile_ports`
+
+Three-way drift check between what is listening, what the registry has allocated, and what it has released. Only ports in the managed range (3000–9999) can be flagged as unregistered — anything outside it was never allocatable.
+
+A registered port with nothing listening is reported as information, **not** a warning: a reserved port for a stopped or on-demand service is normal, and warning about it teaches people to skim past the rest.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `server` | string | | Filter to one VPS (default: all servers) |
+
+---
+
 ### `check_listening_ports`
 
-Check listening ports on a VPS. Flags any port not bound to `127.0.0.1` as a potential security risk.
+Check listening ports on a VPS and grade each by reachability. Addresses are parsed, not string-matched: loopback is `none`, a Tailscale (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`) or private address is `low`, a wildcard or public bind is `high`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -90,6 +102,35 @@ Register a service deployment configuration in the database. Does **not** perfor
 | `environment` | object | | Environment variables as JSON |
 | `systemd_config` | object | | Systemd service config as JSON |
 | `notes` | string | | Optional notes |
+
+Paths are only defaulted where the service type implies them and the deploy step actually creates them. A `docker` service gets none — it comes up from a compose file wherever its author put it, and guessing produces a record that describes a directory nobody made.
+
+---
+
+### `update_service`
+
+Correct a deployment record. **Database only** — nothing is restarted, redeployed, or written on any server. Use `upgrade_service` to change a service's type, and `deploy_service` to change the machine.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+| `port` | integer | | Port the service listens on |
+| `hostname` | string | | Public hostname |
+| `tunnel_name` | string | | Cloudflare tunnel name |
+| `app_path` `static_path` `data_path` `log_path` `config_path` | string | | Paths |
+| `caddy_rules` `environment` `systemd_config` | object | | JSON config |
+| `notes` | string | | Replaces the existing notes — it does not append |
+| `status` | string | | `registered` / `deployed` / `stopped` / `archived` / `purged`; sets the matching timestamp |
+| `clear` | array | | Field names to set back to NULL |
+| `force` | boolean | | Allow a hostname or port already held by another live deployment |
+
+Omitting a field leaves it unchanged, so `clear` is the only way to blank one — `null` cannot express the difference between "leave this alone" and "erase this".
+
+Changing `hostname` or `port` to a value another non-purged deployment already holds is refused unless `force` is set. Pointing a record at another service's resources is what makes a later `purge_service` dangerous.
+
+The response reports every field that changed as `from` → `to`, so a correction can be checked rather than assumed.
 
 ---
 
@@ -133,6 +174,14 @@ Completely remove a service and all associated resources: stops service, removes
 | `remove_data` | boolean | | Delete data directory (default: false) |
 | `remove_logs` | boolean | | Delete log files (default: false) |
 | `remove_dns_record` | boolean | | Remove DNS CNAME record (default: false) |
+| `dry_run` | boolean | | Report the plan and change nothing (default: false) |
+| `force` | boolean | | Proceed despite conflicts (default: false) |
+
+**Refuses to run** when another non-purged deployment on the same server shares this one's hostname, port, `app_path` or `static_path` — purging on the strength of a superseded record removes a *live* service's configuration. The conflicts are named in the response; `force` overrides.
+
+**Reports partial failure honestly.** If any cleanup step fails, the result is `PURGE_INCOMPLETE` with `failed_steps` listing what was left behind, even though the record is marked purged. A purge that leaves the site serving must not report success, and retrying will not help once the record is purged.
+
+The unit and Caddy files it acts on are **located**, not derived from the project and service names.
 
 ---
 
@@ -206,12 +255,30 @@ Validate security configuration for a service: Docker port bindings, Caddy `bind
 
 ### `audit_all_services`
 
-Run security audit across all registered services. Returns a comprehensive report with per-server statistics.
+Run a security audit across every recorded service. Covers all non-purged deployments, not only those marked `deployed`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `server` | string | | Filter to one VPS (default: audit all) |
 | `auto_fix` | boolean | | Auto-fix detected issues (default: false) |
+
+Each service comes back as `SECURE`, `VULNERABLE` or `UNVERIFIED`, and the score is computed over the first two only — a check that could not reach a conclusion is neither a pass nor a finding. Servers that could not be reached are listed separately rather than counted as clean.
+
+One `ServerSnapshot` is taken per server and shared by every check on it, so the cost is a few SSH round trips per *server*, not per service.
+
+---
+
+### `check_firewall`
+
+Check whether a host actually has a working, persistent packet filter — not merely a firewall service that reports as enabled.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `server` | string | | Filter to one VPS (default: all servers) |
+
+It reads the live `iptables`/`ip6tables` rules, the package states, and the persistence mechanism, because every casual indicator can lie: a `ufw` package in `rc` state (removed but not purged) leaves `/etc/ufw/ufw.conf` saying `ENABLED=yes` and `systemctl is-enabled ufw` answering `enabled`, while no filter exists at all. That exact combination hid the absence of any firewall on a production host for months.
+
+Accepted ports may carry a source restriction (e.g. `2020 from 172.20.0.0/16`), so a port open only to a private range is not reported as open to the internet.
 
 ---
 
