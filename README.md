@@ -153,6 +153,32 @@ sudo systemctl restart infra-mcp
 sudo journalctl -u infra-mcp -f
 ```
 
+### Automatic updates (optional)
+
+`deploy/auto-update.sh` polls GitHub and deploys new commits on `main`. It pulls
+rather than being pushed to: a webhook or a CI runner would need an inbound
+endpoint or a deploy key held by a third party, whereas polling needs only
+outbound HTTPS to a public repository.
+
+If the new revision does not report healthy within about 20 seconds, it resets
+to the previous commit and restarts, so a bad push costs seconds rather than an
+outage. Dependencies are reinstalled only when `requirements.txt` changed, and a
+documentation-only commit does not restart the service.
+
+```bash
+sudo cp deploy/infra-mcp-update.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now infra-mcp-update.timer
+
+systemctl list-timers infra-mcp-update      # when it next runs
+sudo journalctl -u infra-mcp-update -f      # what it did
+sudo systemctl start infra-mcp-update       # deploy right now
+```
+
+Requires `NOPASSWD` sudo for `systemctl restart infra-mcp`. `.env` and
+`configs/` are gitignored, so the reset cannot touch credentials or the
+database — do not add them to git.
+
 ## Project Structure
 
 ```
