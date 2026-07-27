@@ -74,6 +74,10 @@ from main.tools.check_listening_ports import (
     check_listening_ports,
     validate_check_listening_ports_input
 )
+from main.tools.reconcile_ports import (
+    reconcile_ports,
+    validate_reconcile_ports_input
+)
 from main.tools.validate_service_security import (
     validate_service_security,
     validate_validate_service_security_input
@@ -732,6 +736,26 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     }
                 },
                 # Security audit tools
+                {
+                    "name": "reconcile_ports",
+                    "description": (
+                        "Compare the port registry against what servers are actually "
+                        "listening on. Warns about ports in use but unregistered (which "
+                        "allocate_port would hand out, causing a collision) and ports "
+                        "recorded as RELEASED while still serving. Registered ports whose "
+                        "service is stopped are reported as information only, not problems."
+                    ),
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "server": {
+                                "type": "string",
+                                **({"enum": INFRA_SERVERS} if INFRA_SERVERS else {}),
+                                "description": "Optional VPS server to limit the check to"
+                            }
+                        }
+                    }
+                },
                 {
                     "name": "check_listening_ports",
                     "description": "Check listening ports on a VPS server to identify security risks. Returns all ports not bound to 127.0.0.1 (localhost only).",
@@ -1577,6 +1601,16 @@ async def mcp_endpoint(request: JSONRPCRequest):
                 )
 
             # Security audit tools
+            elif tool_name == "reconcile_ports":
+                is_valid, error_msg = await validate_reconcile_ports_input(arguments)
+                if not is_valid:
+                    raise InvalidParamsError(error_msg)
+
+                result = await reconcile_ports(
+                    store=store,
+                    server=arguments.get("server")
+                )
+
             elif tool_name == "check_listening_ports":
                 is_valid, error_msg = await validate_check_listening_ports_input(arguments)
                 if not is_valid:

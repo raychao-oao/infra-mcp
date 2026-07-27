@@ -111,13 +111,23 @@ class SQLiteStore(ResourceStore):
     async def list_port_allocations(
         self,
         project: Optional[str] = None,
-        server: Optional[str] = None
+        server: Optional[str] = None,
+        include_released: bool = False
     ) -> List[PortAllocation]:
-        """List all port allocations."""
+        """
+        List port allocations.
+
+        Released rows are excluded by default, since for allocation purposes a
+        released port is simply free. Reconciliation needs them: a port recorded
+        as RELEASED while a process is listening on it is the most dangerous
+        kind of drift, and invisible without this.
+        """
         async with self.SessionLocal() as session:
-            query = select(PortAllocation).where(
-                PortAllocation.status != AllocationStatus.RELEASED
-            )
+            query = select(PortAllocation)
+            if not include_released:
+                query = query.where(
+                    PortAllocation.status != AllocationStatus.RELEASED
+                )
 
             if project:
                 query = query.where(PortAllocation.project == project)
