@@ -677,6 +677,19 @@ async def mcp_endpoint(request: JSONRPCRequest):
                             "remove_dns_record": {
                                 "type": "boolean",
                                 "description": "Remove DNS CNAME record (default: false)"
+                            },
+                            "dry_run": {
+                                "type": "boolean",
+                                "description": "Report what would be removed and change nothing (default: false)"
+                            },
+                            "force": {
+                                "type": "boolean",
+                                "description": (
+                                    "Proceed even when another live deployment shares this "
+                                    "record's hostname, port or paths (default: false). Purging "
+                                    "is refused in that case because it would break the other "
+                                    "service; only override after reading the reported conflicts."
+                                )
                             }
                         },
                         "required": ["project", "service", "server"]
@@ -1595,7 +1608,9 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     remove_static_files=arguments.get("remove_static_files", False),
                     remove_data=arguments.get("remove_data", False),
                     remove_logs=arguments.get("remove_logs", False),
-                    remove_dns_record=arguments.get("remove_dns_record", False)
+                    remove_dns_record=arguments.get("remove_dns_record", False),
+                    dry_run=arguments.get("dry_run", False),
+                    force=arguments.get("force", False)
                 )
 
             elif tool_name == "upgrade_service":
