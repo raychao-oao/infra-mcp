@@ -62,6 +62,10 @@ from main.tools.purge_service import (
     purge_service,
     validate_purge_service_input
 )
+from main.tools.update_service import (
+    update_service,
+    validate_update_service_input
+)
 from main.tools.upgrade_service import (
     upgrade_service,
     validate_upgrade_service_input
@@ -690,6 +694,52 @@ async def mcp_endpoint(request: JSONRPCRequest):
                                     "is refused in that case because it would break the other "
                                     "service; only override after reading the reported conflicts."
                                 )
+                            }
+                        },
+                        "required": ["project", "service", "server"]
+                    }
+                },
+                {
+                    "name": "update_service",
+                    "description": (
+                        "Correct a deployment record: paths, hostname, port, notes, status. "
+                        "Database only — nothing is restarted, redeployed or written on the server. "
+                        "Use upgrade_service instead to change a service's type, and deploy_service to change the box."
+                    ),
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": {"type": "string", "description": "Project name"},
+                            "service": {"type": "string", "description": "Service name"},
+                            "server": {"type": "string", "description": "VPS server name"},
+                            "port": {"type": "integer", "description": "Port the service listens on"},
+                            "hostname": {"type": "string", "description": "Public hostname"},
+                            "tunnel_name": {"type": "string", "description": "Cloudflare tunnel name"},
+                            "app_path": {"type": "string", "description": "Application code path"},
+                            "static_path": {"type": "string", "description": "Static files path"},
+                            "data_path": {"type": "string", "description": "Data directory"},
+                            "log_path": {"type": "string", "description": "Log directory"},
+                            "config_path": {"type": "string", "description": "Config files path"},
+                            "caddy_rules": {"type": "object", "description": "Caddy routing rules"},
+                            "environment": {"type": "object", "description": "Environment variables"},
+                            "systemd_config": {"type": "object", "description": "systemd service configuration"},
+                            "notes": {"type": "string", "description": "Notes on this deployment"},
+                            "status": {
+                                "type": "string",
+                                "enum": ["registered", "deployed", "stopped", "archived", "purged"],
+                                "description": "Deployment status; sets the matching timestamp"
+                            },
+                            "clear": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "Field names to set back to NULL, e.g. a static_path that "
+                                    "nothing serves. Omitting a field leaves it unchanged."
+                                )
+                            },
+                            "force": {
+                                "type": "boolean",
+                                "description": "Allow a hostname or port already held by another live deployment"
                             }
                         },
                         "required": ["project", "service", "server"]
@@ -1610,6 +1660,33 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     remove_logs=arguments.get("remove_logs", False),
                     remove_dns_record=arguments.get("remove_dns_record", False),
                     dry_run=arguments.get("dry_run", False),
+                    force=arguments.get("force", False)
+                )
+
+            elif tool_name == "update_service":
+                is_valid, error_msg = await validate_update_service_input(arguments)
+                if not is_valid:
+                    raise InvalidParamsError(error_msg)
+
+                result = await update_service(
+                    store=store,
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"],
+                    port=arguments.get("port"),
+                    hostname=arguments.get("hostname"),
+                    tunnel_name=arguments.get("tunnel_name"),
+                    app_path=arguments.get("app_path"),
+                    static_path=arguments.get("static_path"),
+                    data_path=arguments.get("data_path"),
+                    log_path=arguments.get("log_path"),
+                    config_path=arguments.get("config_path"),
+                    caddy_rules=arguments.get("caddy_rules"),
+                    environment=arguments.get("environment"),
+                    systemd_config=arguments.get("systemd_config"),
+                    notes=arguments.get("notes"),
+                    status=arguments.get("status"),
+                    clear=arguments.get("clear"),
                     force=arguments.get("force", False)
                 )
 

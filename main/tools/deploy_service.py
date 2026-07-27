@@ -135,19 +135,9 @@ async def create_directories(
     """
     created_dirs = []
     errors = []
-
-    # 1. Create /var/www/{project}/ with sudo
-    result = await run_ssh_command(
-        server,
-        f"sudo mkdir -p {q(static_path)} && sudo chown {q(SSH_USER)}:{q(SSH_USER)} {q(static_path)}"
-    )
-    if result["success"]:
-        created_dirs.append(static_path)
-    else:
-        errors.append(f"Failed to create {static_path}: {result.get('stderr', result.get('message'))}")
-
-    # 2. Create ~/PRJ/{project}/ structure
     prj_base = f"~/PRJ/{project}"
+
+    # 1. Create ~/PRJ/{project}/ structure
     result = await run_ssh_command(
         server,
         f"mkdir -p {q(prj_base)}"
@@ -157,16 +147,28 @@ async def create_directories(
     else:
         errors.append(f"Failed to create {prj_base}: {result.get('stderr', result.get('message'))}")
 
-    # 3. Create symlink ~/PRJ/{project}/www -> /var/www/{project}/
-    symlink_path = f"{prj_base}/www"
-    result = await run_ssh_command(
-        server,
-        f"ln -sfn {q(static_path)} {q(symlink_path)}"
-    )
-    if result["success"]:
-        created_dirs.append(f"{symlink_path} -> {static_path}")
-    else:
-        errors.append(f"Failed to create symlink: {result.get('stderr', result.get('message'))}")
+    # 2. Create /var/www/{project}/ and its symlink — only for services that
+    #    actually serve files. A service with no static_path used to get an empty
+    #    /var/www directory and a symlink to it anyway.
+    if static_path:
+        result = await run_ssh_command(
+            server,
+            f"sudo mkdir -p {q(static_path)} && sudo chown {q(SSH_USER)}:{q(SSH_USER)} {q(static_path)}"
+        )
+        if result["success"]:
+            created_dirs.append(static_path)
+        else:
+            errors.append(f"Failed to create {static_path}: {result.get('stderr', result.get('message'))}")
+
+        symlink_path = f"{prj_base}/www"
+        result = await run_ssh_command(
+            server,
+            f"ln -sfn {q(static_path)} {q(symlink_path)}"
+        )
+        if result["success"]:
+            created_dirs.append(f"{symlink_path} -> {static_path}")
+        else:
+            errors.append(f"Failed to create symlink: {result.get('stderr', result.get('message'))}")
 
     # 4. Create app directory if needed (non-static services)
     if service_type != "static" and app_path:

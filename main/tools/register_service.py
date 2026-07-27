@@ -20,24 +20,44 @@ from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
 
 
-def _generate_default_paths(project: str, service_type: str) -> Dict[str, str]:
+# Service types that actually serve files from disk. Only these get a
+# static_path by default — see _generate_default_paths.
+STATIC_SERVING_TYPES = {"static", "flask+static"}
+
+
+def _generate_default_paths(project: str, service_type: str) -> Dict[str, Optional[str]]:
     """
     Generate default paths based on unified directory structure.
+
+    Only for paths this project's deploy step really creates, and only where the
+    service type implies them. A record is a description of reality; inventing a
+    path is not a harmless default:
+
+    - `static_path` on a pure flask/nodejs/docker service made deploy_service
+      create `/var/www/{project}/` and symlink `~/PRJ/{project}/www` to it, for a
+      service with no static files at all. knowledge-factory carries such a path
+      today, registered 2026-07-27.
+    - `log_path` was defaulted to `/var/log/{project}/`, which nothing creates —
+      so purge_service would offer to delete a directory that never existed, and
+      get_service_info reported it as if it did.
 
     Args:
         project: Project name
         service_type: Service type
 
     Returns:
-        Dict with default paths
+        Dict with default paths; None means "unknown, do not guess"
     """
-    paths = {
-        "static_path": f"/var/www/{project}/",
+    paths: Dict[str, Optional[str]] = {
+        "static_path": None,
         "app_path": f"~/PRJ/{project}/app/",
         "data_path": f"~/PRJ/{project}/data/",
-        "log_path": f"/var/log/{project}/",
+        "log_path": None,
         "config_path": f"~/PRJ/{project}/config/",
     }
+
+    if service_type in STATIC_SERVING_TYPES:
+        paths["static_path"] = f"/var/www/{project}/"
 
     # Static-only services don't need app_path
     if service_type == "static":
@@ -209,7 +229,10 @@ async def register_service(
             "directory_structure": {
                 "static_files": final_static_path,
                 "app_code": final_app_path,
-                "symlink": f"~/PRJ/{project}/www/ -> {final_static_path}",
+                "symlink": (
+                    f"~/PRJ/{project}/www/ -> {final_static_path}"
+                    if final_static_path else None
+                ),
             }
         }
 

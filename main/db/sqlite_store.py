@@ -376,6 +376,7 @@ class SQLiteStore(ResourceStore):
         environment: Optional[dict] = None,
         systemd_config: Optional[dict] = None,
         notes: Optional[str] = None,
+        clear: Optional[list] = None,
         **kwargs
     ) -> Optional[ServiceDeployment]:
         """
@@ -384,6 +385,12 @@ class SQLiteStore(ResourceStore):
         Used for:
         - Upgrading service type (e.g., static -> flask+static)
         - Updating paths and configuration
+
+        `clear` names fields to set back to NULL. Passing e.g. static_path=None
+        cannot express that: None is also what "leave this alone" looks like, and
+        the named parameter swallows it before **kwargs ever sees it. Clearing a
+        wrong path matters — a static_path nothing serves still makes deploy
+        create /var/www/{project}/ and a symlink to it.
         """
         async with self.SessionLocal() as session:
             result = await session.execute(
@@ -421,6 +428,14 @@ class SQLiteStore(ResourceStore):
                     deployment.systemd_config = systemd_config
                 if notes is not None:
                     deployment.notes = notes
+
+                for field in (clear or []):
+                    if hasattr(deployment, field):
+                        setattr(deployment, field, None)
+
+                for key, value in kwargs.items():
+                    if hasattr(deployment, key):
+                        setattr(deployment, key, value)
 
                 await session.commit()
                 await session.refresh(deployment)
