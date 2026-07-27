@@ -119,6 +119,15 @@ async def validate_service_security(
     # Check 3: Actual listening ports
     if port:
         record(_check_actual_port_binding(snapshot, port))
+    elif service_type == ServiceType.STATIC:
+        # A static site has no backend port — Caddy serves the files itself.
+        # Reporting that as "could not verify" is a warning about a deliberate
+        # state, which is how a report stops being read.
+        record({
+            "check": "actual_port_binding",
+            "passed": True,
+            "details": "Static service — served directly by Caddy, no backend port to bind",
+        })
     else:
         # No port on record means the binding cannot be verified. Not a silent
         # skip — lion-punch/app had port=None and was one of the services found
