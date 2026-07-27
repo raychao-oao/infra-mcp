@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
 from main.models.service_deployment import DeploymentStatus
+from main.providers.server_snapshot import ServerSnapshot
 from main.tools.validate_service_security import validate_service_security
 
 
@@ -48,22 +49,40 @@ async def audit_all_services(
         if server:
             all_services = [s for s in all_services if s.server == server]
 
-        # Filter to only deployed services
-        deployed_services = [
+        # Audit every service still on record. This used to keep only those with
+        # status == DEPLOYED, which on one host meant 2 of 12 records: the other
+        # ten were running but marked REGISTERED, so the audit could not see the
+        # six that turned out to be exposed on the public IP. `status` is
+        # hand-maintained bookkeeping and drifts from reality — a security audit
+        # must not decide what to look at based on it.
+        #
+        # PURGED is the one exception: those services are gone by definition.
+        audited_services = [
             s for s in all_services
-            if s.status == DeploymentStatus.DEPLOYED
+            if s.status != DeploymentStatus.PURGED
         ]
 
-        if not deployed_services:
+        if not audited_services:
             return {
                 "success": True,
                 "total_services": 0,
-                "deployed_services": 0,
                 "secure_services": 0,
                 "vulnerable_services": 0,
                 "services": [],
-                "message": f"No deployed services found{' on ' + server if server else ''}"
+                "message": f"No services on record{' for ' + server if server else ''}"
             }
+
+        # One snapshot per server, not per service. Each validation would
+        # otherwise spend several SSH round trips of its own, which made a full
+        # audit take minutes — and a slow audit gets skipped as reliably as a
+        # noisy one.
+        snapshots = {}
+        snapshot_errors = {}
+        for srv in sorted({s.server for s in audited_services}):
+            try:
+                snapshots[srv] = ServerSnapshot.fetch(srv)
+            except Exception as e:
+                snapshot_errors[srv] = str(e)
 
         # Audit each service
         audit_results = []
@@ -71,11 +90,23 @@ async def audit_all_services(
         vulnerable_count = 0
         total_issues = 0
         total_fixed = 0
+        unreachable = []
 
-        for service_deployment in deployed_services:
+        for service_deployment in audited_services:
             project = service_deployment.project
             service = service_deployment.service
             srv = service_deployment.server
+
+            if srv not in snapshots:
+                # Report rather than silently drop: an unreachable host is the
+                # one case where "no issues found" would be actively misleading.
+                unreachable.append({
+                    "project": project,
+                    "service": service,
+                    "server": srv,
+                    "error": snapshot_errors.get(srv, "unknown")
+                })
+                continue
 
             # Run validation
             validation_result = await validate_service_security(
@@ -83,7 +114,8 @@ async def audit_all_services(
                 project=project,
                 service=service,
                 server=srv,
-                auto_fix=auto_fix
+                auto_fix=auto_fix,
+                snapshot=snapshots[srv]
             )
 
             # Count results
@@ -107,13 +139,18 @@ async def audit_all_services(
                 "fixed_count": validation_result.get("fixed_count", 0) if auto_fix else None
             })
 
-        # Build summary
+        # Build summary. The score is over services actually audited — counting
+        # ones on an unreachable host would quietly deflate it and read as though
+        # they had failed a check.
+        audited_count = len(audit_results)
         summary = {
-            "total_services": len(deployed_services),
+            "total_services": len(audited_services),
+            "audited_services": audited_count,
+            "unreachable_services": len(unreachable),
             "secure_services": secure_count,
             "vulnerable_services": vulnerable_count,
             "total_issues": total_issues,
-            "security_score": round((secure_count / len(deployed_services)) * 100, 1) if deployed_services else 0
+            "security_score": round((secure_count / audited_count) * 100, 1) if audited_count else 0
         }
 
         if auto_fix:
@@ -138,17 +175,23 @@ async def audit_all_services(
 
         # Build message
         if vulnerable_count == 0:
-            message = f"✅ All {len(deployed_services)} service(s) are secure"
+            message = f"✅ All {audited_count} service(s) are secure"
         else:
             message = f"⚠️ Found {vulnerable_count} vulnerable service(s) with {total_issues} issue(s)"
             if auto_fix and total_fixed > 0:
                 message += f" ({total_fixed} fixed, {total_issues - total_fixed} remaining)"
+        if unreachable:
+            message += (
+                f" — {len(unreachable)} service(s) NOT audited, "
+                f"host unreachable: {', '.join(sorted(snapshot_errors))}"
+            )
 
         return {
             "success": True,
             "summary": summary,
             "by_server": by_server,
             "services": audit_results,
+            "unreachable": unreachable,
             "auto_fix_enabled": auto_fix,
             "message": message
         }
