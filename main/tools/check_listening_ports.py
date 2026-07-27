@@ -8,7 +8,7 @@ Returns all ports not bound to 127.0.0.1 (localhost only).
 import ipaddress
 import subprocess
 import re
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, Tuple
 
 from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore

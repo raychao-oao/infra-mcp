@@ -8,7 +8,6 @@ Validate service security configuration including:
 - Optional auto-fix capability
 """
 
-import subprocess
 import re
 
 from main.config import INFRA_SERVERS
@@ -17,7 +16,7 @@ from typing import Optional, Dict, Any, List
 
 from main.db.sqlite_store import SQLiteStore
 from main.models.service_deployment import ServiceType
-from main.providers.server_snapshot import ServerSnapshot, SYSTEMD_DIR
+from main.providers.server_snapshot import ServerSnapshot
 from main.providers.ssh_provider import run_command
 from main.tools.check_listening_ports import _classify_address
 
