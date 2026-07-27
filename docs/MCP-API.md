@@ -1,912 +1,589 @@
-# MCP Tools API Specification
+# MCP Tools API Reference
 
-**Document version**: v1.0
-**Last updated**: 2025-12-28
-**Status**: Design Phase
-
----
-
-## 📖 Overview
-
-This document defines all tools provided by the Infrastructure MCP Server, including input parameters, output formats, error handling, and usage examples.
-
-### Tool List
-
-1. **allocate_port** - Port resource allocation
-2. **register_tunnel** - Cloudflare Tunnel registration
-3. **deploy_tunnel** - Deploy Cloudflare Tunnel to VPS
-4. **list_resources** - Resource usage query
+**Document version**: v2.0
+**Last updated**: 2026-05-16
+**Status**: Production
 
 ---
 
-## 🔧 Tool 1: allocate_port
+## Overview
 
-### Description
+The Infrastructure MCP Server exposes **38 tools** via JSON-RPC 2.0 over HTTP.
 
-Allocates an available port for a specific project service. Supports a preferred port (used if available); otherwise automatically allocates the next available port from the pool.
+**Endpoint**: `POST /mcp`
+**Auth**: `Authorization: Bearer <MCP_API_KEY>` (when `MCP_API_KEY` env var is set)
 
-### Use Cases
+### Tool Categories
 
-- New project needs a port to run a web server
-- Multiple services within a project (frontend, backend, admin) need separate ports
-- Development environment needs a different port from production
-
-### Input Schema
-
-```json
-{
-  "name": "allocate_port",
-  "description": "Allocate a port for a project service",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "project": {
-        "type": "string",
-        "description": "Project name (e.g., 'my-app', 'my-app')",
-        "required": true,
-        "pattern": "^[a-z0-9-]+$"
-      },
-      "service": {
-        "type": "string",
-        "description": "Service name within the project (e.g., 'web-server', 'api', 'admin')",
-        "required": true,
-        "pattern": "^[a-z0-9-]+$"
-      },
-      "preferred_port": {
-        "type": "integer",
-        "description": "Preferred port number (optional). If available, will be allocated. If not, next available port will be used.",
-        "required": false,
-        "minimum": 3000,
-        "maximum": 9999
-      },
-      "notes": {
-        "type": "string",
-        "description": "Optional notes about this port allocation",
-        "required": false
-      }
-    }
-  }
-}
-```
-
-### Output Schema
-
-**Success Response**:
-```json
-{
-  "success": true,
-  "allocated_port": 3000,
-  "allocation_id": "alloc_20251228_120530_001",
-  "project": "my-app",
-  "service": "web-server",
-  "allocated_at": "2025-12-28T12:05:30Z",
-  "message": "Port 3000 allocated to my-app/web-server"
-}
-```
-
-**Error Response**:
-```json
-{
-  "success": false,
-  "error": "PORT_ALREADY_ALLOCATED",
-  "message": "Port 3000 is already allocated to another-project/api",
-  "allocated_to": {
-    "project": "another-project",
-    "service": "api"
-  },
-  "suggestion": "Try without specifying preferred_port to get next available port"
-}
-```
-
-### Error Codes
-
-| Error Code | Description | Solution |
-|-----------|-------------|----------|
-| `PORT_ALREADY_ALLOCATED` | Preferred port is already in use | Omit preferred_port or choose different port |
-| `PORT_OUT_OF_RANGE` | Port number outside 3000-9999 range | Use port within valid range |
-| `INVALID_PROJECT_NAME` | Project name contains invalid characters | Use lowercase letters, numbers, hyphens only |
-| `PORT_POOL_EXHAUSTED` | No more ports available in the pool | Add more VPS servers or reclaim unused ports |
-
-### Usage Examples
-
-#### Example 1: Allocate preferred port (success)
-
-```
-User: My project my-app needs a port to run a web server, I'd like port 3000
-
-Claude uses allocate_port:
-{
-  "project": "my-app",
-  "service": "web-server",
-  "preferred_port": 3000,
-  "notes": "Main Flask application server"
-}
-
-Result:
-{
-  "success": true,
-  "allocated_port": 3000,
-  "allocation_id": "alloc_20251228_120530_001",
-  "message": "Port 3000 allocated to my-app/web-server"
-}
-```
-
-#### Example 2: Preferred port taken — auto-allocate next available
-
-```
-User: The pac project needs a port, I'd like 8080
-
-Claude uses allocate_port:
-{
-  "project": "pac",
-  "service": "dashboard",
-  "preferred_port": 8080
-}
-
-Result:
-{
-  "success": false,
-  "error": "PORT_ALREADY_ALLOCATED",
-  "message": "Port 8080 is already allocated to pac/dashboard (existing)",
-  "suggestion": "Try without specifying preferred_port"
-}
-
-Claude retries without preferred_port:
-{
-  "project": "pac",
-  "service": "api"
-}
-
-Result:
-{
-  "success": true,
-  "allocated_port": 3001,
-  "allocation_id": "alloc_20251228_120545_002",
-  "message": "Port 3001 allocated to pac/api"
-}
-```
-
-#### Example 3: Auto-allocate (no preferred port)
-
-```
-User: The sandbox project needs two ports — one for frontend, one for backend
-
-Claude uses allocate_port (first call):
-{
-  "project": "sandbox",
-  "service": "frontend"
-}
-
-Result:
-{
-  "success": true,
-  "allocated_port": 5000,
-  "message": "Port 5000 allocated to sandbox/frontend"
-}
-
-Claude uses allocate_port (second call):
-{
-  "project": "sandbox",
-  "service": "backend"
-}
-
-Result:
-{
-  "success": true,
-  "allocated_port": 5001,
-  "message": "Port 5001 allocated to sandbox/backend"
-}
-```
+| Category | Tools | Count |
+|----------|-------|-------|
+| [Port Management](#port-management) | allocate_port, release_port, check_listening_ports | 3 |
+| [Service Management](#service-management) | register_service, deploy_service, stop_service, purge_service, upgrade_service, get_service_info, get_service_logs, check_service_health, validate_service_security, audit_all_services, get_caddy_config, restart_service | 12 |
+| [Tunnel Registry](#tunnel-registry) | register_main_tunnel, list_main_tunnels, get_tunnel_config | 3 |
+| [Cloudflare Tunnel API](#cloudflare-tunnel-api) | create_cloudflare_tunnel, delete_cloudflare_tunnel, list_cloudflare_tunnels, get_tunnel_token, list_public_hostnames, add_public_hostname, remove_public_hostname | 7 |
+| [DNS Management](#dns-management) | create_dns_record, update_dns_record, delete_dns_record, list_dns_records | 4 |
+| [Cloudflare Access](#cloudflare-access) | create_access_application, delete_access_application, list_access_applications, list_access_policies | 4 |
+| [Gitea](#gitea) | create_gitea_repo, list_gitea_repos, get_gitea_repo, delete_gitea_repo | 4 |
+| [Inventory](#inventory) | list_resources | 1 |
 
 ---
 
-## 🔧 Tool 2: register_tunnel
+## Port Management
 
-### Description
+### `allocate_port`
 
-Registers a Cloudflare Tunnel configuration — creates the config YAML, sets up a DNS CNAME record, and prepares the systemd service file.
+Allocate a port (3000–9999) for a project service. If `preferred_port` is taken, the next available port is assigned.
 
-### Use Cases
-
-- New project needs to be accessible externally (via Zero Trust)
-- Adding a new subdomain to an existing project
-- Updating the target port of an existing tunnel
-
-### Input Schema
-
-```json
-{
-  "name": "register_tunnel",
-  "description": "Register a Cloudflare Tunnel configuration",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "project": {
-        "type": "string",
-        "description": "Project name",
-        "required": true
-      },
-      "tunnel_name": {
-        "type": "string",
-        "description": "Tunnel identifier (will be used for config file and systemd service)",
-        "required": true,
-        "pattern": "^[a-z0-9-]+$"
-      },
-      "hostname": {
-        "type": "string",
-        "description": "Full hostname (e.g., 'myapp.your-domain.com', 'api.your-domain.com')",
-        "required": true,
-        "pattern": "^[a-z0-9.-]+\\.your-domain\\.com$"
-      },
-      "target_port": {
-        "type": "integer",
-        "description": "Local port to forward traffic to (must be allocated first via allocate_port)",
-        "required": true,
-        "minimum": 3000,
-        "maximum": 9999
-      },
-      "vps_server": {
-        "type": "string",
-        "description": "VPS server to deploy this tunnel on",
-        "required": false,
-        "default": "prod",
-        "enum": ["prod"]
-      },
-      "use_existing_tunnel_id": {
-        "type": "string",
-        "description": "If provided, use existing tunnel credentials instead of creating new tunnel",
-        "required": false
-      }
-    }
-  }
-}
-```
-
-### Output Schema
-
-**Success Response**:
-```json
-{
-  "success": true,
-  "tunnel_id": "tunnel_20251228_120600_001",
-  "tunnel_name": "myapp",
-  "hostname": "myapp.your-domain.com",
-  "target_service": "http://localhost:3000",
-  "config_generated": true,
-  "config_path": "/home/your_user/.cloudflared/config-myapp.yml",
-  "systemd_service": "cloudflared-myapp.service",
-  "dns_record": {
-    "type": "CNAME",
-    "name": "myapp",
-    "target": "abc123-def456.cfargotunnel.com",
-    "proxied": true,
-    "configured": true
-  },
-  "next_steps": [
-    "Deploy tunnel to VPS using deploy_tunnel tool",
-    "Or manually: scp config to VPS and create systemd service"
-  ],
-  "message": "Tunnel myapp registered successfully for myapp.your-domain.com -> localhost:3000"
-}
-```
-
-**Error Response**:
-```json
-{
-  "success": false,
-  "error": "HOSTNAME_ALREADY_USED",
-  "message": "Hostname myapp.your-domain.com is already registered to another tunnel",
-  "existing_tunnel": {
-    "tunnel_name": "myapp-old",
-    "project": "old-project"
-  },
-  "suggestion": "Choose a different subdomain or release the existing tunnel first"
-}
-```
-
-### Error Codes
-
-| Error Code | Description | Solution |
-|-----------|-------------|----------|
-| `HOSTNAME_ALREADY_USED` | Subdomain already registered | Choose different subdomain |
-| `PORT_NOT_ALLOCATED` | Target port not allocated to this project | Run allocate_port first |
-| `INVALID_DOMAIN` | Domain not in allowed list (your-domain.com) | Use valid domain |
-| `CLOUDFLARE_API_ERROR` | Failed to create DNS record | Check Cloudflare API token and permissions |
-| `TUNNEL_NAME_EXISTS` | Tunnel name already used | Choose different tunnel name |
-
-### Usage Examples
-
-#### Example 1: Register a new tunnel (full workflow)
-
-```
-User: The my-app project already has port 3000 allocated, now needs a tunnel at my-app.your-domain.com
-
-Claude uses register_tunnel:
-{
-  "project": "my-app",
-  "tunnel_name": "my-app",
-  "hostname": "my-app.your-domain.com",
-  "target_port": 3000,
-  "vps_server": "prod"
-}
-
-Result:
-{
-  "success": true,
-  "tunnel_id": "tunnel_20251228_120600_001",
-  "tunnel_name": "my-app",
-  "hostname": "my-app.your-domain.com",
-  "config_path": "/home/your_user/.cloudflared/config-my-app.yml",
-  "dns_record": {
-    "type": "CNAME",
-    "name": "my-app",
-    "target": "abc123-def456.cfargotunnel.com",
-    "configured": true
-  },
-  "message": "Tunnel registered. Next: deploy to VPS using deploy_tunnel tool"
-}
-```
-
-#### Example 2: Use existing tunnel credentials
-
-```
-User: The pac project is migrating to prod using existing tunnel ID 0a1a62fb-0ad5-4f6a-9e8c-f0129fcbaf92
-
-Claude uses register_tunnel:
-{
-  "project": "pac",
-  "tunnel_name": "pac",
-  "hostname": "pac.your-domain.com",
-  "target_port": 8080,
-  "vps_server": "prod",
-  "use_existing_tunnel_id": "0a1a62fb-0ad5-4f6a-9e8c-f0129fcbaf92"
-}
-
-Result:
-{
-  "success": true,
-  "tunnel_id": "tunnel_20251228_120615_002",
-  "tunnel_name": "pac",
-  "hostname": "pac.your-domain.com",
-  "config_path": "/home/your_user/.cloudflared/config-pac.yml",
-  "credentials_file": "/home/your_user/.cloudflared/0a1a62fb-0ad5-4f6a-9e8c-f0129fcbaf92.json",
-  "message": "Tunnel registered using existing credentials"
-}
-```
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name (lowercase, hyphens allowed) |
+| `service` | string | ✅ | Service name (lowercase, hyphens allowed) |
+| `preferred_port` | integer | | Preferred port (3000–9999) |
+| `server` | string | | VPS server name (default: first in INFRA_SERVERS) |
+| `notes` | string | | Optional notes |
 
 ---
 
-## 🔧 Tool 3: deploy_tunnel
+### `release_port`
 
-### Description
+Release a port allocation and return it to the pool.
 
-Deploys a registered Cloudflare Tunnel to a VPS server:
-- Copies tunnel config to the VPS
-- Creates the cloudflared systemd service
-- Starts the tunnel service
-
-**Note**: This tool deploys only the tunnel, not the application. Use `deploy_service` or deploy manually for the application.
-
-### Use Cases
-
-- Deploy a Cloudflare Tunnel to a VPS
-- Start a registered tunnel service
-- Re-deploy a tunnel after a VPS reboot
-
-### Input Schema
-
-```json
-{
-  "name": "deploy_tunnel",
-  "description": "Deploy Cloudflare Tunnel to VPS server",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "tunnel_name": {
-        "type": "string",
-        "description": "Tunnel name (must be registered first via register_tunnel)",
-        "required": true
-      },
-      "server": {
-        "type": "string",
-        "description": "Target VPS server",
-        "required": false,
-        "default": "prod",
-        "enum": ["prod"]
-      }
-    }
-  }
-}
-```
-
-### Output Schema
-
-**Success Response**:
-```json
-{
-  "success": true,
-  "tunnel_name": "myapp",
-  "server": "prod",
-  "service_name": "cloudflared-myapp.service",
-  "status": "running",
-  "hostname": "myapp.your-domain.com",
-  "connections": 4,
-  "config_path": "/home/your_user/.cloudflared/config-myapp.yml",
-  "logs_command": "sudo journalctl -u cloudflared-myapp -f",
-  "message": "Tunnel deployed and started successfully"
-}
-```
-
-**Error Response**:
-```json
-{
-  "success": false,
-  "error": "TUNNEL_NOT_REGISTERED",
-  "message": "Tunnel 'myapp' not found in registry",
-  "suggestion": "Run register_tunnel first to register this tunnel"
-}
-```
-
-### Error Codes
-
-| Error Code | Description | Solution |
-|-----------|-------------|----------|
-| `TUNNEL_NOT_REGISTERED` | Tunnel not registered | Run register_tunnel first |
-| `SSH_CONNECTION_FAILED` | Cannot connect to VPS | Check VPS status and SSH credentials |
-| `CONFIG_FILE_NOT_FOUND` | Tunnel config file not found | Check register_tunnel completed successfully |
-| `SERVICE_START_FAILED` | cloudflared service failed to start | SSH to server and check logs: `sudo journalctl -u cloudflared-{name} -n 50` |
-| `CREDENTIALS_NOT_FOUND` | Tunnel credentials file not found | Check tunnel was created properly in Cloudflare |
-
-### Usage Examples
-
-#### Example 1: Deploy a registered tunnel
-
-```
-User: Deploy the my-app tunnel to prod
-
-Prerequisites:
-- Tunnel 'my-app' already registered via register_tunnel
-- Application already deployed (manually or via deployment scripts)
-
-Claude uses deploy_tunnel:
-{
-  "tunnel_name": "my-app",
-  "server": "prod"
-}
-
-Result:
-{
-  "success": true,
-  "tunnel_name": "my-app",
-  "server": "prod",
-  "service_name": "cloudflared-my-app.service",
-  "status": "running",
-  "hostname": "my-app.your-domain.com",
-  "connections": 4,
-  "message": "Tunnel deployed and started successfully"
-}
-```
-
-#### Example 2: Deploy tunnel to prod (default server)
-
-```
-User: Start the pac tunnel
-
-Claude uses deploy_tunnel:
-{
-  "tunnel_name": "pac"
-}
-
-Result:
-{
-  "success": true,
-  "tunnel_name": "pac",
-  "server": "prod",
-  "service_name": "cloudflared-pac.service",
-  "status": "running",
-  "hostname": "pac.your-domain.com",
-  "connections": 4,
-  "message": "Tunnel deployed and started successfully"
-}
-```
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `port` | integer | ✅ | Port number to release (3000–9999) |
+| `server` | string | | VPS server name |
 
 ---
 
-## 🔧 Tool 4: list_resources
+### `check_listening_ports`
 
-### Description
+Check listening ports on a VPS. Flags any port not bound to `127.0.0.1` as a potential security risk.
 
-Queries resource usage — allocated ports, registered tunnels, deployed applications. Supports filtering and statistics.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `server` | string | ✅ | VPS server name |
+| `port` | integer | | Specific port to check (optional) |
 
-### Use Cases
+---
 
-- Check whether a specific port is in use
-- See what resources a project is using
-- See what applications are deployed on a VPS
-- Resource usage statistics
+## Service Management
 
-### Input Schema
+### `register_service`
 
-```json
-{
-  "name": "list_resources",
-  "description": "List infrastructure resource allocations",
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "resource_type": {
-        "type": "string",
-        "description": "Type of resources to list",
-        "required": false,
-        "default": "all",
-        "enum": ["all", "ports", "tunnels", "deployments"]
-      },
-      "project": {
-        "type": "string",
-        "description": "Filter by project name",
-        "required": false
-      },
-      "server": {
-        "type": "string",
-        "description": "Filter by VPS server",
-        "required": false
-      },
-      "status": {
-        "type": "string",
-        "description": "Filter by resource status",
-        "required": false,
-        "enum": ["all", "active", "inactive", "failed"]
-      },
-      "include_released": {
-        "type": "boolean",
-        "description": "Include released/deallocated resources",
-        "required": false,
-        "default": false
-      }
-    }
-  }
-}
+Register a service deployment configuration in the database. Does **not** perform actual deployment — use `deploy_service` to deploy.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+| `service_type` | string | ✅ | `flask`, `nodejs`, `static`, `docker`, `flask+static` |
+| `port` | integer | | Port number (can be allocated later) |
+| `hostname` | string | | Public hostname (e.g., `app.your-domain.com`) |
+| `tunnel_name` | string | | Cloudflare tunnel name |
+| `app_path` | string | | Application code path (e.g., `~/PRJ/PAC/app/`) |
+| `static_path` | string | | Static files path (e.g., `/var/www/pac/`) |
+| `data_path` | string | | Data directory path |
+| `log_path` | string | | Log directory path |
+| `config_path` | string | | Config files path |
+| `caddy_rules` | object | | Caddy routing rules as JSON |
+| `environment` | object | | Environment variables as JSON |
+| `systemd_config` | object | | Systemd service config as JSON |
+| `notes` | string | | Optional notes |
+
+---
+
+### `deploy_service`
+
+Deploy a registered service to VPS. Allocates port, adds DNS record, generates Caddy config, creates systemd service, and starts it.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+| `cloudflare_api_token` | string | | Override env var `CF_API_TOKEN` |
+| `cloudflare_account_id` | string | | Override env var `CF_ACCOUNT_ID` |
+
+---
+
+### `stop_service`
+
+Stop a running service. Keeps all configuration and files intact.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+
+---
+
+### `purge_service`
+
+Completely remove a service and all associated resources: stops service, removes systemd unit, removes Caddy config, releases port. File deletion is opt-in.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+| `remove_app_files` | boolean | | Delete application files (default: false) |
+| `remove_static_files` | boolean | | Delete static files (default: false) |
+| `remove_data` | boolean | | Delete data directory (default: false) |
+| `remove_logs` | boolean | | Delete log files (default: false) |
+| `remove_dns_record` | boolean | | Remove DNS CNAME record (default: false) |
+
+---
+
+### `upgrade_service`
+
+Change a service's type (e.g., `static` → `flask+static`). Used when a static site needs a backend added.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+| `new_service_type` | string | ✅ | `flask`, `nodejs`, `flask+static` |
+| `app_path` | string | | App path (default: `~/PRJ/{project}/app/`) |
+| `notes` | string | | Optional notes |
+
+---
+
+### `get_service_info`
+
+Get detailed information about a deployed service: connection URL, directory structure, port, Caddy config, systemd service name.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+
+---
+
+### `get_service_logs`
+
+Retrieve logs from a service component via journalctl (SSH to VPS).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `server` | string | ✅ | VPS server name |
+| `project` | string | | Project name (required for `service` component) |
+| `service` | string | | Service name (required for `service` component) |
+| `component` | string | | `service`, `caddy`, or `tunnel` (default: `service`) |
+| `lines` | integer | | Lines to return (default: 50, max: 1000) |
+| `since` | string | | journalctl `--since` value (e.g., `"1 hour ago"`, `"30 min ago"`) |
+
+---
+
+### `check_service_health`
+
+Check health status of services and optionally system resources (CPU, memory, disk).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `server` | string | ✅ | VPS server name |
+| `project` | string | | Filter to specific project |
+| `service` | string | | Filter to specific service |
+| `include_system_stats` | boolean | | Include CPU/memory/disk stats (default: false) |
+
+---
+
+### `validate_service_security`
+
+Validate security configuration for a service: Docker port bindings, Caddy `bind` directives, actual listening interfaces. Optionally auto-fix issues.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+| `auto_fix` | boolean | | Auto-fix detected issues (default: false) |
+
+---
+
+### `audit_all_services`
+
+Run security audit across all registered services. Returns a comprehensive report with per-server statistics.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `server` | string | | Filter to one VPS (default: audit all) |
+| `auto_fix` | boolean | | Auto-fix detected issues (default: false) |
+
+---
+
+### `get_caddy_config`
+
+Read the Caddy configuration from a VPS (main Caddyfile or service-specific config file).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `server` | string | ✅ | VPS server name |
+| `project` | string | | Project name for service-specific config |
+| `service` | string | | Service name for service-specific config |
+
+---
+
+### `restart_service`
+
+Restart a service component (application service, Caddy, or Cloudflare tunnel).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+| `component` | string | | `service`, `caddy`, or `tunnel` (default: `service`) |
+
+---
+
+## Tunnel Registry
+
+These tools manage the local database record of Cloudflare Tunnels that are actually running on VPS servers (one tunnel per VPS, carrying many public hostnames).
+
+### `register_main_tunnel`
+
+Register an existing Cloudflare Tunnel in the local database for tracking. The tunnel should already exist in Cloudflare — use `create_cloudflare_tunnel` to create new ones.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tunnel_name` | string | ✅ | Tunnel name (e.g., `prod-main`) |
+| `cloudflare_tunnel_id` | string | ✅ | Cloudflare Tunnel UUID |
+| `vps_server` | string | ✅ | VPS server name |
+| `tunnel_target` | string | | Tunnel target domain (e.g., `uuid.cfargotunnel.com`) |
+| `credentials_file` | string | | Path to credentials JSON file |
+| `config_file` | string | | Path to config YAML file |
+| `systemd_service` | string | | Systemd service name |
+| `notes` | string | | Optional notes |
+
+---
+
+### `list_main_tunnels`
+
+List all registered main tunnels from the local database.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `vps_server` | string | | Filter by VPS server |
+| `status` | string | | Filter by status (`active`, `inactive`, `failed`) |
+
+---
+
+### `get_tunnel_config`
+
+Read the Cloudflare Tunnel configuration file from a VPS server via SSH.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `server` | string | ✅ | VPS server name |
+
+---
+
+## Cloudflare Tunnel API
+
+These tools call the Cloudflare API directly to create and manage tunnels and their public hostname routing rules.
+
+### `create_cloudflare_tunnel`
+
+Create a new Cloudflare Tunnel via the Cloudflare API.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | ✅ | Tunnel name (e.g., `prod-main`) |
+| `config_src` | string | | `cloudflare` (remotely managed) or `local` (default: `cloudflare`) |
+
+---
+
+### `delete_cloudflare_tunnel`
+
+Delete a Cloudflare Tunnel via the API.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tunnel_id` | string | | Tunnel UUID |
+| `tunnel_name` | string | | Tunnel name (used if `tunnel_id` not provided) |
+| `force` | boolean | | Force delete even with active connections |
+
+---
+
+### `list_cloudflare_tunnels`
+
+List tunnels in the Cloudflare account.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `include_deleted` | boolean | | Include deleted tunnels |
+| `status` | string | | Filter by `active` or `inactive` |
+| `name_contains` | string | | Filter by name substring |
+
+---
+
+### `get_tunnel_token`
+
+Get the connection token for a Cloudflare Tunnel (used when installing `cloudflared` on a new VPS).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tunnel_id` | string | | Tunnel UUID |
+| `tunnel_name` | string | | Tunnel name (used if `tunnel_id` not provided) |
+
+---
+
+### `list_public_hostnames`
+
+List all public hostname routes configured for a remotely-managed Cloudflare Tunnel.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tunnel_id` | string | | Tunnel UUID |
+| `tunnel_name` | string | | Tunnel name (used if `tunnel_id` not provided) |
+
+---
+
+### `add_public_hostname`
+
+Add a public hostname route to a remotely-managed Cloudflare Tunnel. Updates the Cloudflare-side config — no `config.yml` required.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `hostname` | string | ✅ | Public hostname (e.g., `app.your-domain.com`) |
+| `service` | string | | Backend URL (default: `http://localhost:80`) |
+| `tunnel_id` | string | | Tunnel UUID |
+| `tunnel_name` | string | | Tunnel name (used if `tunnel_id` not provided) |
+
+---
+
+### `remove_public_hostname`
+
+Remove a public hostname route from a remotely-managed Cloudflare Tunnel.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `hostname` | string | ✅ | Public hostname to remove |
+| `tunnel_id` | string | | Tunnel UUID |
+| `tunnel_name` | string | | Tunnel name (used if `tunnel_id` not provided) |
+
+---
+
+## DNS Management
+
+All DNS tools operate against Cloudflare DNS via the API. The zone is derived automatically from the domain name.
+
+### `create_dns_record`
+
+Create a DNS record in Cloudflare.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `domain` | string | ✅ | Full domain (e.g., `app.your-domain.com`) |
+| `record_type` | string | ✅ | `A`, `AAAA`, `CNAME`, `TXT`, `MX`, `NS`, `SRV`, `CAA` |
+| `content` | string | ✅ | Record value (IP, target hostname, etc.) |
+| `ttl` | integer | | TTL in seconds (1 = auto, default: 1) |
+| `proxied` | boolean | | Proxy through Cloudflare (default: false) |
+| `priority` | integer | | Priority for MX/SRV records |
+| `comment` | string | | Optional comment |
+| `tunnel_name` | string | | Use `cloudflared` CLI to create tunnel CNAME instead of API |
+| `server` | string | | VPS to run `cloudflared` on (used with `tunnel_name`) |
+
+---
+
+### `update_dns_record`
+
+Update an existing DNS record.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `domain` | string | ✅ | Full domain name |
+| `record_id` | string | | Record ID (skips lookup if provided) |
+| `record_type` | string | | Record type for lookup (if `record_id` not provided) |
+| `content` | string | | New content value |
+| `ttl` | integer | | New TTL |
+| `proxied` | boolean | | New proxied status |
+
+---
+
+### `delete_dns_record`
+
+Delete a DNS record.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `record_id` | string | | Record ID to delete |
+| `domain` | string | | Domain (used to find record) |
+| `record_type` | string | | Record type (used with `domain` to find record) |
+
+---
+
+### `list_dns_records`
+
+List DNS records for a zone.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `domain` | string | | Domain/zone to list (e.g., `your-domain.com`) |
+| `record_type` | string | | Filter by record type |
+| `name_contains` | string | | Filter by name substring |
+
+---
+
+## Cloudflare Access
+
+### `create_access_application`
+
+Create a Cloudflare Access application to protect a URL with authentication.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | ✅ | Application name (e.g., `Grafana Dashboard`) |
+| `domain` | string | ✅ | Protected domain (e.g., `metrics.your-domain.com`) |
+| `session_duration` | string | | Session TTL (e.g., `24h`, `168h`; default: `24h`) |
+| `policy_name` | string | | Name for a new policy to create |
+| `policy_emails` | array | | Allowed email addresses for the new policy |
+| `policy_id` | string | | Existing policy ID to attach |
+
+---
+
+### `delete_access_application`
+
+Delete a Cloudflare Access application.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `app_id` | string | | Application UUID |
+| `domain` | string | | Domain to look up app (if `app_id` not provided) |
+
+---
+
+### `list_access_applications`
+
+List Cloudflare Access applications in the account.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `domain` | string | | Filter by zone derived from domain |
+
+---
+
+### `list_access_policies`
+
+List Cloudflare Access policies.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `domain` | string | | Derive zone from this domain |
+| `app_id` | string | | List policies for a specific application |
+
+---
+
+## Gitea
+
+Manages repositories on the self-hosted Gitea instance (`git.nowhere.tw`). Credentials are read from the `GITEA_TOKEN` and `GITEA_URL` environment variables.
+
+### `create_gitea_repo`
+
+Create a new repository.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | ✅ | Repository name |
+| `description` | string | | Repository description |
+| `private` | boolean | | Private repository (default: false) |
+| `auto_init` | boolean | | Initialize with README (default: true) |
+| `gitignores` | string | | Gitignore template name |
+| `license` | string | | License template name |
+| `readme` | string | | README template (default: `Default`) |
+| `default_branch` | string | | Default branch (default: `main`) |
+
+---
+
+### `list_gitea_repos`
+
+List repositories for the authenticated user.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `limit` | integer | | Max repos to return (default: 50, max: 100) |
+| `page` | integer | | Pagination page (default: 1) |
+
+---
+
+### `get_gitea_repo`
+
+Get detailed information about a repository.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `owner` | string | ✅ | Repository owner username |
+| `repo` | string | ✅ | Repository name |
+
+---
+
+### `delete_gitea_repo`
+
+Delete a repository. **Irreversible.** Requires a `danger_token` to prevent accidental deletion.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `owner` | string | ✅ | Repository owner username |
+| `repo` | string | ✅ | Repository name |
+| `danger_token` | string | ✅ | Safety token required for irreversible operations |
+
+---
+
+## Inventory
+
+### `list_resources`
+
+List all infrastructure resource allocations with optional filtering.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `resource_type` | string | | `all`, `ports`, `tunnels`, or `deployments` (default: `all`) |
+| `project` | string | | Filter by project name |
+| `server` | string | | Filter by VPS server |
+| `status` | string | | Filter by status |
+| `include_released` | boolean | | Include released/archived records (default: false) |
+
+---
+
+## Typical Workflow
+
+### Deploy a new service
+
+```
+1. allocate_port         → get a port
+2. register_service      → record config in DB
+3. deploy_service        → SSH to VPS, set up systemd + Caddy
+4. add_public_hostname   → route hostname through CF tunnel
+5. get_service_info      → confirm live URL
 ```
 
-### Output Schema
-
-```json
-{
-  "success": true,
-  "resources": {
-    "ports": [
-      {
-        "port": 3000,
-        "project": "my-app",
-        "service": "web-server",
-        "allocation_id": "alloc_20251228_120530_001",
-        "allocated_at": "2025-12-28T12:05:30Z",
-        "status": "in-use"
-      },
-      {
-        "port": 8080,
-        "project": "pac",
-        "service": "dashboard",
-        "allocation_id": "alloc_20251220_100000_001",
-        "allocated_at": "2025-12-20T10:00:00Z",
-        "status": "in-use"
-      },
-      {
-        "port": 5000,
-        "project": "sandbox",
-        "service": "web",
-        "allocation_id": "alloc_20251220_100100_002",
-        "allocated_at": "2025-12-20T10:01:00Z",
-        "status": "in-use"
-      }
-    ],
-    "tunnels": [
-      {
-        "tunnel_name": "my-app",
-        "hostname": "my-app.your-domain.com",
-        "project": "my-app",
-        "target_port": 3000,
-        "server": "prod",
-        "tunnel_id": "tunnel_20251228_120600_001",
-        "registered_at": "2025-12-28T12:06:00Z",
-        "status": "active"
-      },
-      {
-        "tunnel_name": "pac",
-        "hostname": "pac.your-domain.com",
-        "project": "pac",
-        "target_port": 8080,
-        "server": "prod",
-        "status": "active"
-      },
-      {
-        "tunnel_name": "sandbox",
-        "hostname": "sandbox.your-domain.com",
-        "project": "sandbox",
-        "target_port": 5000,
-        "server": "prod",
-        "status": "active"
-      }
-    ],
-    "deployments": [
-      {
-        "project": "my-app",
-        "server": "prod",
-        "service_name": "my-app-web.service",
-        "deployment_type": "flask_app",
-        "port": 3000,
-        "deployed_at": "2025-12-28T12:06:30Z",
-        "status": "running",
-        "uptime": "2h 15m"
-      },
-      {
-        "project": "pac",
-        "server": "prod",
-        "service_name": "pac-web.service",
-        "deployment_type": "flask_app",
-        "port": 8080,
-        "deployed_at": "2025-12-20T10:30:00Z",
-        "status": "running",
-        "uptime": "8d 4h"
-      }
-    ]
-  },
-  "summary": {
-    "total_ports_allocated": 3,
-    "ports_in_use": 3,
-    "ports_available": 6997,
-    "total_tunnels": 3,
-    "tunnels_active": 3,
-    "total_deployments": 2,
-    "deployments_running": 2,
-    "servers": {
-      "prod": {
-        "deployments": 2,
-        "ports_used": 3,
-        "tunnels": 3,
-        "status": "healthy"
-      }
-    }
-  },
-  "message": "Resource query completed"
-}
-```
-
-### Usage Examples
-
-#### Example 1: View all resources
+### Protect a service with Cloudflare Access
 
 ```
-User: Show all infrastructure resource usage
-
-Claude uses list_resources:
-{
-  "resource_type": "all"
-}
-
-Result: (see Output Schema above)
+1. create_access_application  → create the Access app + policy
+2. (service is now behind CF Access login)
 ```
 
-#### Example 2: View resources for a specific project
+### Tear down a service
 
 ```
-User: What resources is the my-app project using?
-
-Claude uses list_resources:
-{
-  "resource_type": "all",
-  "project": "my-app"
-}
-
-Result:
-{
-  "success": true,
-  "resources": {
-    "ports": [
-      {
-        "port": 3000,
-        "service": "web-server",
-        "status": "in-use"
-      }
-    ],
-    "tunnels": [
-      {
-        "tunnel_name": "my-app",
-        "hostname": "my-app.your-domain.com",
-        "target_port": 3000,
-        "status": "active"
-      }
-    ],
-    "deployments": [
-      {
-        "server": "prod",
-        "service_name": "my-app-web.service",
-        "status": "running"
-      }
-    ]
-  },
-  "summary": {
-    "total_resources": 3,
-    "project": "my-app"
-  }
-}
-```
-
-#### Example 3: Check if a specific port is available
-
-```
-User: Is port 3500 available?
-
-Claude uses list_resources:
-{
-  "resource_type": "ports"
-}
-
-Claude analyzes result:
-- Port 3500 not in the allocated ports list
-- Therefore it's available
-
-Response: "Port 3500 is available — not currently used by any project."
-```
-
-#### Example 4: View deployments on prod server
-
-```
-User: What applications are deployed on prod?
-
-Claude uses list_resources:
-{
-  "resource_type": "deployments",
-  "server": "prod"
-}
-
-Result:
-{
-  "success": true,
-  "resources": {
-    "deployments": [
-      {
-        "project": "my-app",
-        "service_name": "my-app-web.service",
-        "status": "running",
-        "port": 3000
-      },
-      {
-        "project": "pac",
-        "service_name": "pac-web.service",
-        "status": "running",
-        "port": 8080
-      },
-      {
-        "project": "sandbox",
-        "service_name": "sandbox-web.service",
-        "status": "running",
-        "port": 5000
-      }
-    ]
-  },
-  "summary": {
-    "server": "prod",
-    "total_deployments": 3,
-    "running": 3
-  }
-}
+1. remove_public_hostname  → stop routing traffic
+2. purge_service           → stop systemd, remove Caddy config, release port
 ```
 
 ---
 
-## 🔄 Tool Interaction Workflows
+## Changelog
 
-### Full Deployment Workflow (New Project)
-
-```mermaid
-graph TD
-    A[User: Need to deploy new project] --> B[allocate_port]
-    B --> C{Port allocated?}
-    C -->|Yes| D[Deploy application manually or via scripts]
-    C -->|No| B
-    D --> E[register_tunnel]
-    E --> F{Tunnel registered?}
-    F -->|Yes| G[deploy_tunnel]
-    F -->|No| E
-    G --> H{Tunnel deployed?}
-    H -->|Yes| I[Project live]
-    H -->|No| J[Check logs and debug]
-    J --> G
-```
-
-**Practical example**:
-```
-1. User: "Deploy my-new-app to prod using domain mynewapp.your-domain.com"
-
-2. Claude:
-   Step 1: allocate_port
-   {
-     "project": "my-new-app",
-     "service": "web",
-     "preferred_port": 3500
-   }
-   → Port 3500 allocated
-
-   Step 2: register_tunnel
-   {
-     "project": "my-new-app",
-     "tunnel_name": "mynewapp",
-     "hostname": "mynewapp.your-domain.com",
-     "target_port": 3500
-   }
-   → Tunnel registered, DNS configured
-
-   Step 3: Deploy application (manually or via deployment scripts)
-   bash scripts/deploy/deploy-flask.sh \
-     --project my-new-app \
-     --port 3500 \
-     --server prod
-   → Application deployed
-
-   Step 4: deploy_tunnel
-   {
-     "tunnel_name": "mynewapp",
-     "server": "prod"
-   }
-   → Tunnel deployed successfully
-
-3. Result: "my-new-app is now live on prod at https://mynewapp.your-domain.com"
-```
-
----
-
-## 📚 Best Practices
-
-### 1. Resource Naming Conventions
-
-**Project names**:
-- Lowercase letters, numbers, hyphens
-- Examples: `my-app`, `pac`, `sandbox`
-
-**Service names**:
-- Descriptive names
-- Examples: `web-server`, `api`, `admin`, `worker`
-
-**Tunnel names**:
-- Usually matches or abbreviates the project name
-- Examples: `my-app`, `pac`, `sandbox`, `myapp`
-
-**Hostnames**:
-- Use `<name>.your-domain.com` as the service URL
-- Examples: `my-app.your-domain.com`, `api.your-domain.com`
-
-### 2. Port Allocation Strategy
-
-- **Preferred port** — use standard ports when possible:
-  - 3000: Common Node.js/React dev server
-  - 5000: Common Flask default
-  - 8080: Common HTTP alternate
-  - 8000: Common Django default
-
-- **Auto-allocation** — when the preferred port is unavailable, let the system allocate
-
-### 3. Error Handling
-
-- Always check the `success` field in tool responses
-- When `success: false`, read `error` and `message` to understand the cause
-- Adjust strategy based on the `suggestion` field
-
-### 4. Resource Cleanup
-
-Future `release_port`, `unregister_tunnel`, and `undeploy_from_vps` tools will be provided for resource reclamation.
-
----
-
-## 📝 Changelog
+### v2.0 (2026-05-16)
+- Complete rewrite based on actual production code
+- Documented all 38 tools (was 4 in v1.0)
+- Removed design-phase placeholders
+- Added Gitea, Cloudflare Access, Cloudflare Tunnel API sections
 
 ### v1.0 (2025-12-28)
-- Initial version
-- Defined 4 core MCP tools
-- Complete API schema and usage examples
-
----
-
-**Document maintenance**: Updated as the MCP Server implementation evolves
-**Next review**: After Phase 1 implementation is complete
-**Maintainer**: Infrastructure Team
+- Initial draft (design phase, 4 tools)

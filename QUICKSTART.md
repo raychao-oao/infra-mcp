@@ -11,7 +11,7 @@
 ```bash
 # Clone the repo (if you haven't already)
 cd ~/PROJECTS
-git clone <repository-url> infra-mcp
+git clone https://github.com/raychao-oao/infra-mcp infra-mcp
 cd infra-mcp
 
 # Create virtual environment
@@ -46,7 +46,7 @@ python main/server.py
 curl -s -X POST http://localhost:8000/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | jq '.result.tools | length'
-# Expected output: 31
+# Expected output: 38
 
 # 2. List all tool names
 curl -s -X POST http://localhost:8000/mcp \
@@ -107,45 +107,63 @@ curl -X POST http://localhost:8000/mcp \
 
 ### Claude Desktop Setup
 
-Edit `~/.config/Claude/claude_desktop_config.json`:
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "infrastructure": {
-      "command": "python",
-      "args": ["/Users/YOUR_USER/infra-mcp/main/server.py"]
+      "type": "http",
+      "url": "http://localhost:8000/mcp"
     }
   }
 }
 ```
 
-Restart Claude Desktop to start using infrastructure MCP tools in your conversations.
+For a remote/production server protected by Cloudflare Access:
+
+```json
+{
+  "mcpServers": {
+    "infrastructure": {
+      "type": "http",
+      "url": "https://infra.your-domain.com/mcp",
+      "headers": {
+        "CF-Access-Client-Id": "YOUR_CLIENT_ID",
+        "CF-Access-Client-Secret": "YOUR_CLIENT_SECRET"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop to load the new server.
 
 ### Using in Claude Code
 
-Claude Code automatically loads the project's MCP server (if configured in `claude_desktop_config.json`).
-
-Ask directly in the conversation:
+Add the same config to `.claude/settings.json` in your project, or use the global `~/.claude/settings.json`. Then ask directly in the conversation:
 - "Allocate a port on prod for test-api"
 - "Check the security status of prod"
 - "List all deployed services"
 
 ---
 
-## 📊 31 MCP Tools by Category
+## 📊 38 MCP Tools by Category
 
-### 1. Port & Resource (3)
-- allocate_port, release_port, list_resources
+### 1. Port Management (3)
+- allocate_port, release_port, check_listening_ports
 
-### 2. Service Deployment (6)
+### 2. Service Management (12)
 - register_service, deploy_service, stop_service, purge_service, upgrade_service, get_service_info
+- get_service_logs, check_service_health, restart_service, get_caddy_config
+- validate_service_security, audit_all_services
 
-### 3. Security Tools (3)
-- check_listening_ports, validate_service_security, audit_all_services
-
-### 4. Tunnel Management (3)
+### 3. Tunnel Registry (3)
 - register_main_tunnel, list_main_tunnels, get_tunnel_config
+
+### 4. Cloudflare Tunnel API (7)
+- create_cloudflare_tunnel, delete_cloudflare_tunnel, list_cloudflare_tunnels, get_tunnel_token
+- list_public_hostnames, add_public_hostname, remove_public_hostname
 
 ### 5. DNS Management (4)
 - create_dns_record, update_dns_record, delete_dns_record, list_dns_records
@@ -153,9 +171,11 @@ Ask directly in the conversation:
 ### 6. Cloudflare Access (4)
 - create_access_application, delete_access_application, list_access_applications, list_access_policies
 
-### 7. Service Operations (8)
-- restart_service, get_caddy_config, get_service_logs, check_service_health
-- create_cloudflare_tunnel, delete_cloudflare_tunnel, list_cloudflare_tunnels, get_tunnel_token
+### 7. Gitea (4)
+- create_gitea_repo, list_gitea_repos, get_gitea_repo, delete_gitea_repo
+
+### 8. Inventory (1)
+- list_resources
 
 See [`docs/MCP-API.md`](docs/MCP-API.md) for full API documentation.
 
@@ -186,7 +206,7 @@ pip install -r requirements.txt
 
 ```bash
 # Ensure the database file has correct permissions
-chmod 644 infrastructure.db
+chmod 644 configs/resources.db
 ```
 
 ---
@@ -203,5 +223,5 @@ chmod 644 infrastructure.db
 
 ---
 
-**Last updated**: 2026-05-11
+**Last updated**: 2026-05-16
 **Version**: Infrastructure Management MCP v1.0.0

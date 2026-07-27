@@ -1,664 +1,234 @@
-# Infrastructure Data Models
+# Infrastructure MCP Server — Data Models
 
-**Document version**: v1.0
-**Last updated**: 2025-12-28
-**Status**: Design Phase
-
----
-
-## 📖 Overview
-
-This document defines all data models used by the Infrastructure MCP Server, including resource allocation records, server configurations, tunnel registrations, and more.
-
-### Storage Strategy
-
-**Phase 1**: JSON files
-- Path: `configs/resources.json`
-- Pros: Simple, no database setup required
-- Cons: No concurrent writes, can't handle large datasets
-
-**Phase 2**: SQLite
-- Pros: Relational queries, ACID guarantees, better performance
-- Migration path: Provide a JSON → SQLite conversion tool
-
-**Phase 3**: PostgreSQL
-- When multi-user support or remote access is needed
+**Document version**: v2.0
+**Last updated**: 2026-05-16
+**Status**: Production
 
 ---
 
-## 🗂️ Core Data Models
+## Overview
 
-### 1. Port Allocation
+The server uses **SQLite** via SQLAlchemy async (aiosqlite driver). Three tables are managed by SQLAlchemy ORM; Cloudflare and Gitea data is not persisted locally — it is fetched live from their respective APIs.
 
-```json
-{
-  "allocation_id": "alloc_20251228_120530_001",
-  "resource_type": "port",
-  "port": 3000,
-  "project": "my-app",
-  "service": "web-server",
-  "server": "prod",
-  "allocated_at": "2025-12-28T12:05:30Z",
-  "allocated_by": "claude-code",
-  "status": "in-use",
-  "notes": "Main Flask application server",
-  "metadata": {
-    "requested_port": 3000,
-    "was_preferred": true
-  }
-}
+**Database file**: `~/PRJ/infra-mcp/configs/resources.db` (production)
+**ORM models**: `main/models/`
+**Store layer**: `main/db/sqlite_store.py` (SQLiteStore class)
+
+---
+
+## Tables
+
+### `port_allocations`
+
+Tracks port assignments in the 3000–9999 range.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `allocation_id` | String | PK | Unique ID (e.g., `alloc_20260101_001`) |
+| `port` | Integer | NOT NULL, indexed | Port number (3000–9999) |
+| `project` | String | NOT NULL, indexed | Project name |
+| `service` | String | NOT NULL | Service name within project |
+| `server` | String | NOT NULL | VPS server (default: `INFRA_DEFAULT_SERVER`) |
+| `allocated_at` | DateTime | NOT NULL | Allocation timestamp (UTC) |
+| `allocated_by` | String | NOT NULL | Always `"mcp-server"` |
+| `status` | Enum | NOT NULL, indexed | See statuses below |
+| `notes` | String | nullable | Optional notes |
+
+**Unique constraint**: `(port, server)` — a port can only be allocated once per server.
+
+**`AllocationStatus` enum**:
+| Value | Meaning |
+|-------|---------|
+| `allocated` | Reserved but service not yet started |
+| `in-use` | Service actively using this port |
+| `reserved` | Held, not actively in use |
+| `released` | Freed; eligible for reuse |
+
+`list_port_allocations` excludes `released` records by default.
+
+---
+
+### `main_tunnels`
+
+Tracks the Cloudflare Tunnel running on each VPS. One tunnel per VPS — all service traffic routes through Caddy on that tunnel.
+
+```
+MainTunnel (one per VPS)
+└── prod-main (CF tunnel UUID)
+    └── All HTTPS traffic → Caddy :80
+        ├── infra.nowhere.tw → :8000
+        ├── app.nowhere.tw   → :3000
+        └── api.nowhere.tw   → :8080
 ```
 
-**Field descriptions**:
-- `allocation_id`: Unique identifier, format `alloc_YYYYMMDD_HHMMSS_NNN`
-- `resource_type`: Fixed value `"port"`
-- `port`: Allocated port number (3000-9999)
-- `project`: Project name (lowercase, hyphens)
-- `service`: Service name (service identifier within the project)
-- `server`: VPS server using this port
-- `allocated_at`: ISO 8601 timestamp
-- `allocated_by`: Allocation source (`claude-code`, `manual`, `api`)
-- `status`: Status value
-  - `allocated`: Just allocated, not yet in use
-  - `in-use`: Currently in use
-  - `reserved`: Reserved (not in use but not released)
-  - `released`: Released (can be reclaimed)
-- `notes`: Optional notes
-- `metadata`: Additional information
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `tunnel_name` | String | PK | Tunnel name (e.g., `prod-main`) |
+| `cloudflare_tunnel_id` | String | NOT NULL, UNIQUE | Cloudflare Tunnel UUID |
+| `vps_server` | String | NOT NULL, UNIQUE, indexed | VPS server (one tunnel per VPS) |
+| `tunnel_target` | String | nullable | `<uuid>.cfargotunnel.com` |
+| `credentials_file` | String | nullable | Path to `~/.cloudflared/<uuid>.json` |
+| `config_file` | String | nullable | Path to `~/.cloudflared/config.yml` |
+| `systemd_service` | String | nullable | Systemd unit name (e.g., `cloudflared-prod-main`) |
+| `status` | Enum | NOT NULL | See statuses below |
+| `created_at` | DateTime | NOT NULL | Creation timestamp (UTC) |
+| `updated_at` | DateTime | nullable | Last update timestamp (auto-updated) |
+| `notes` | String | nullable | Optional notes |
 
-**Indexes** (Phase 2 SQLite):
-```sql
-CREATE INDEX idx_port_number ON port_allocations(port);
-CREATE INDEX idx_project ON port_allocations(project);
-CREATE INDEX idx_status ON port_allocations(status);
+**`MainTunnelStatus` enum**:
+| Value | Meaning |
+|-------|---------|
+| `active` | Running and healthy |
+| `inactive` | Registered but not running |
+| `failed` | Error state |
+
+---
+
+### `service_deployments`
+
+Records the configuration and lifecycle state of every managed service.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `deployment_id` | String | PK | Unique ID (e.g., `deploy_infra-mcp_api_asablue`) |
+| `project` | String | NOT NULL, indexed | Project name |
+| `service` | String | NOT NULL, indexed | Service name |
+| `server` | String | NOT NULL, indexed | VPS server |
+| `service_type` | Enum | NOT NULL | See types below |
+| `port` | Integer | nullable | Port (from `port_allocations`) |
+| `hostname` | String | nullable | Public hostname |
+| `tunnel_name` | String | nullable | CF tunnel name |
+| `app_path` | String | nullable | Application code path on VPS |
+| `static_path` | String | nullable | Static files path (e.g., `/var/www/project/`) |
+| `data_path` | String | nullable | Data directory path |
+| `log_path` | String | nullable | Log directory path |
+| `config_path` | String | nullable | Config files path |
+| `caddy_rules` | JSON | nullable | Caddy routing rules object |
+| `environment` | JSON | nullable | Environment variables object |
+| `systemd_config` | JSON | nullable | Systemd unit configuration object |
+| `status` | Enum | NOT NULL, indexed | See statuses below |
+| `registered_at` | DateTime | NOT NULL | When `register_service` was called |
+| `registered_by` | String | NOT NULL | Always `"mcp-server"` |
+| `deployed_at` | DateTime | nullable | When `deploy_service` completed |
+| `stopped_at` | DateTime | nullable | When `stop_service` was called |
+| `archived_at` | DateTime | nullable | When service was archived |
+| `purged_at` | DateTime | nullable | When `purge_service` completed |
+| `notes` | Text | nullable | Optional notes |
+| `backup_config` | JSON | nullable | Config snapshot saved on archive |
+
+**`ServiceType` enum**:
+| Value | Description |
+|-------|-------------|
+| `flask` | Python Flask application |
+| `nodejs` | Node.js application |
+| `static` | Static website (Caddy file_server) |
+| `docker` | Docker container |
+| `flask+static` | Flask API + static frontend |
+
+**`DeploymentStatus` enum**:
+| Value | Meaning |
+|-------|---------|
+| `registered` | Config recorded; not yet deployed to VPS |
+| `deployed` | Running on VPS |
+| `stopped` | Stopped; files and config retained |
+| `archived` | Caddy/tunnel removed; config backed up to `backup_config` |
+| `purged` | Fully deleted; excluded from normal queries |
+
+`list_service_deployments` excludes `purged` records by default.
+
+---
+
+## Relationships
+
+The three tables are loosely coupled — foreign key enforcement is not done at the DB level (SQLite FK support is off by default), but the application enforces these logical references:
+
 ```
+port_allocations
+    └── (port, server)
+        └── referenced by service_deployments.port + .server
 
-### 2. Tunnel Registration
+main_tunnels
+    └── (tunnel_name)
+        └── referenced by service_deployments.tunnel_name
 
-```json
-{
-  "tunnel_id": "tunnel_20251228_120600_001",
-  "tunnel_name": "my-app",
-  "cloudflare_tunnel_id": "abc123-def456-789ghi-jklmno",
-  "project": "my-app",
-  "hostname": "my-app.your-domain.com",
-  "domain": "your-domain.com",
-  "subdomain": "my-app",
-  "target_service": "http://localhost:3000",
-  "target_port": 3000,
-  "vps_server": "prod",
-  "config_path": "/home/your_user/.cloudflared/config-my-app.yml",
-  "credentials_file": "/home/your_user/.cloudflared/abc123-def456.json",
-  "systemd_service": "cloudflared-my-app.service",
-  "registered_at": "2025-12-28T12:06:00Z",
-  "registered_by": "claude-code",
-  "status": "active",
-  "dns_record": {
-    "type": "CNAME",
-    "name": "my-app",
-    "target": "abc123-def456.cfargotunnel.com",
-    "proxied": true,
-    "cloudflare_zone_id": "zone123",
-    "cloudflare_record_id": "record456",
-    "configured_at": "2025-12-28T12:06:15Z"
-  },
-  "deployment": {
-    "deployed_at": "2025-12-28T12:06:30Z",
-    "service_enabled": true,
-    "service_active": true,
-    "last_checked": "2025-12-28T14:30:00Z"
-  },
-  "metadata": {
-    "ingress_rules": [
-      {
-        "hostname": "my-app.your-domain.com",
-        "service": "http://localhost:3000"
-      }
-    ]
-  }
-}
-```
-
-**Field descriptions**:
-- `tunnel_id`: Internal unique identifier
-- `tunnel_name`: Tunnel name (used for config file name and systemd service)
-- `cloudflare_tunnel_id`: UUID generated by Cloudflare
-- `hostname`: Full hostname
-- `domain`: Top-level domain (extracted from hostname)
-- `subdomain`: Subdomain (extracted from hostname)
-- `target_service`: Tunnel forwarding target (URL format)
-- `target_port`: Target port (must have been allocated via allocate_port)
-- `vps_server`: VPS where this tunnel is deployed
-- `status`: Status value
-  - `registered`: Registered, not yet deployed
-  - `active`: Deployed and running
-  - `inactive`: Deployed but not running
-  - `failed`: Deployment failed or abnormal
-  - `decommissioned`: Decommissioned
-- `dns_record`: DNS configuration info
-- `deployment`: Deployment status info
-
-**Constraints**:
-- `hostname` must be unique
-- `tunnel_name` must be unique per server
-- `target_port` must exist in port_allocations and belong to the same project
-
-### 3. VPS Deployment
-
-```json
-{
-  "deployment_id": "deploy_20251228_120630_001",
-  "project": "my-app",
-  "server": "prod",
-  "deployment_type": "flask_app",
-  "source_info": {
-    "local_path": "/Users/your_user/PROJECTS/my-app",
-    "repository": "https://github.com/user/my-app.git",
-    "branch": "main",
-    "commit": "abc123def"
-  },
-  "target_info": {
-    "remote_path": "/home/your_user/apps/my-app",
-    "user": "your_user",
-    "virtualenv": "/home/your_user/apps/my-app/venv"
-  },
-  "service": {
-    "name": "my-app-web.service",
-    "type": "systemd",
-    "port": 3000,
-    "enabled_on_boot": true,
-    "restart_policy": "always"
-  },
-  "environment": {
-    "FLASK_ENV": "production",
-    "DATABASE_URL": "sqlite:///app.db",
-    "PORT": "3000"
-  },
-  "deployed_at": "2025-12-28T12:06:30Z",
-  "deployed_by": "claude-code",
-  "status": "running",
-  "health": {
-    "last_checked": "2025-12-28T14:30:00Z",
-    "uptime": "2h 24m",
-    "memory_usage": "156MB",
-    "cpu_usage": "2.3%"
-  },
-  "tunnel": {
-    "tunnel_id": "tunnel_20251228_120600_001",
-    "tunnel_name": "my-app",
-    "service_name": "cloudflared-my-app.service"
-  },
-  "metadata": {
-    "deployment_method": "rsync",
-    "deployment_duration": "52.1s",
-    "files_transferred": 234
-  }
-}
-```
-
-**Field descriptions**:
-- `deployment_id`: Unique identifier
-- `deployment_type`: Deployment type
-  - `flask_app`: Python Flask application
-  - `nodejs_app`: Node.js application
-  - `static_site`: Static website
-  - `docker_container`: Docker container (Phase 2)
-- `status`: Deployment status
-  - `deploying`: Deployment in progress
-  - `running`: Running normally
-  - `stopped`: Stopped
-  - `failed`: Failed
-  - `updating`: Update in progress
-- `health`: Health status info (obtained via monitoring service in the future)
-
-### 4. VPS Server Configuration
-
-Storage location: `configs/servers.yml`
-
-```yaml
-servers:
-  prod:
-    # Basic info
-    hostname: prod.your-domain.com
-    ip: YOUR_SERVER_IP
-    location: your-location
-    provider: your-provider
-    plan: your-plan
-
-    # Hardware specs
-    specs:
-      cpu: AMD EPYC 9645 (4 dedicated cores)
-      ram: 7.8GB ECC
-      disk: 256GB NVMe
-      network: 1Gbps
-
-    # System info
-    os: Debian 13 (trixie)
-    kernel: 6.x
-
-    # SSH connection settings
-    ssh:
-      user: your_user
-      port: 22
-      key_path: ~/.ssh/id_ed25519
-      has_nopasswd_sudo: true
-
-    # Capabilities
-    capabilities:
-      - flask_app
-      - nodejs_app
-      - static_site
-      - cloudflared_tunnel
-      - docker  # Phase 2
-
-    # Port range
-    port_range:
-      start: 3000
-      end: 9999
-
-    # Path configuration
-    paths:
-      apps: /home/your_user/apps
-      cloudflared: /home/your_user/.cloudflared
-      systemd: /etc/systemd/system
-      logs: /var/log
-
-    # Pre-installed software
-    installed_software:
-      python: 3.13.5
-      pip: 24.x
-      caddy: 2.10.2
-      cloudflared: v2025.11.1
-      git: 2.x
-
-    # Status
-    status: active
-    last_health_check: 2025-12-28T14:30:00Z
-
-    # Cost info (optional)
-    cost:
-      monthly: 11.99
-      currency: EUR
-      billing_cycle: monthly
-```
-
-**Multi-server example**:
-```yaml
-servers:
-  prod:
-    # ... as above
-
-  greenserver:
-    hostname: green.your-domain.com
-    ip: 123.456.789.012
-    location: Singapore
-    provider: DigitalOcean
-    plan: Droplet Premium
-    # ... other fields
-    status: active
-
-  stagingserver:
-    hostname: staging.your-domain.com
-    # ...
-    status: maintenance
-```
-
-### 5. Cloudflare Configuration
-
-Storage location: `configs/cloudflare.yml`
-
-```yaml
-cloudflare:
-  accounts:
-    primary:
-      email: your@email.com
-      api_token: ${CLOUDFLARE_API_TOKEN}
-      account_id: cf_account_123
-
-      zones:
-        - zone_id: zone_domain_123
-          domain: your-domain.com
-          nameservers:
-            - dana.ns.cloudflare.com
-            - tom.ns.cloudflare.com
-
-      tunnels:
-        - tunnel_id: 0a1a62fb-0ad5-4f6a-9e8c-f0129fcbaf92
-          tunnel_name: pac
-          credentials_file: ~/.cloudflared/0a1a62fb-0ad5-4f6a-9e8c-f0129fcbaf92.json
-          created_at: 2024-12-15
-
-        - tunnel_id: 5871ec4d-ace8-4173-b8c1-2216464780c9
-          tunnel_name: sandbox
-          credentials_file: ~/.cloudflared/5871ec4d-ace8-4173-b8c1-2216464780c9.json
-          created_at: 2024-12-15
-
-  # Allowed domains (for MCP tool validation)
-  allowed_domains:
-    - your-domain.com
-
-  # DNS record templates
-  dns_templates:
-    tunnel_cname:
-      type: CNAME
-      proxied: true
-      ttl: 1  # Auto (Cloudflare managed)
+service_deployments
+    └── one record per (project, service, server)
 ```
 
 ---
 
-## 🔄 Data Relationships
+## Example Records
 
-```
-┌─────────────────┐
-│ Port Allocation │
-└────────┬────────┘
-         │ 1
-         │
-         │ referenced by
-         │
-         ▼ 1
-┌─────────────────────┐       ┌─────────────────┐
-│ Tunnel Registration │ 1───1 │ VPS Deployment  │
-└──────────┬──────────┘       └────────┬────────┘
-           │ N                          │ N
-           │                            │
-           │                            │
-           ▼ 1                          ▼ 1
-     ┌──────────┐               ┌──────────┐
-     │  Domain  │               │   VPS    │
-     │  (YAML)  │               │ (YAML)   │
-     └──────────┘               └──────────┘
-```
-
-**Relationship rules**:
-1. A Tunnel Registration must reference an allocated Port
-2. A VPS Deployment may optionally reference a Tunnel (if the deployment needs one)
-3. All Tunnels must use a domain from allowed_domains
-4. All Deployments must target a registered VPS
-
----
-
-## 📊 Database Schema (Phase 2 - SQLite)
-
-### Table: port_allocations
-
-```sql
-CREATE TABLE port_allocations (
-    allocation_id TEXT PRIMARY KEY,
-    port INTEGER NOT NULL,
-    project TEXT NOT NULL,
-    service TEXT NOT NULL,
-    server TEXT NOT NULL,
-    allocated_at TIMESTAMP NOT NULL,
-    allocated_by TEXT NOT NULL,
-    status TEXT NOT NULL,
-    notes TEXT,
-    metadata JSON,
-
-    UNIQUE(port, server),
-    FOREIGN KEY (server) REFERENCES servers(server_name)
-);
-
-CREATE INDEX idx_port ON port_allocations(port);
-CREATE INDEX idx_project ON port_allocations(project);
-CREATE INDEX idx_status ON port_allocations(status);
-```
-
-### Table: tunnel_registrations
-
-```sql
-CREATE TABLE tunnel_registrations (
-    tunnel_id TEXT PRIMARY KEY,
-    tunnel_name TEXT NOT NULL,
-    cloudflare_tunnel_id TEXT NOT NULL,
-    project TEXT NOT NULL,
-    hostname TEXT NOT NULL UNIQUE,
-    domain TEXT NOT NULL,
-    subdomain TEXT NOT NULL,
-    target_port INTEGER NOT NULL,
-    vps_server TEXT NOT NULL,
-    registered_at TIMESTAMP NOT NULL,
-    registered_by TEXT NOT NULL,
-    status TEXT NOT NULL,
-    dns_record JSON,
-    deployment JSON,
-    metadata JSON,
-
-    FOREIGN KEY (target_port, vps_server)
-        REFERENCES port_allocations(port, server),
-    FOREIGN KEY (vps_server) REFERENCES servers(server_name)
-);
-
-CREATE INDEX idx_hostname ON tunnel_registrations(hostname);
-CREATE INDEX idx_project_tunnel ON tunnel_registrations(project);
-CREATE INDEX idx_server_tunnel ON tunnel_registrations(vps_server);
-```
-
-### Table: vps_deployments
-
-```sql
-CREATE TABLE vps_deployments (
-    deployment_id TEXT PRIMARY KEY,
-    project TEXT NOT NULL,
-    server TEXT NOT NULL,
-    deployment_type TEXT NOT NULL,
-    deployed_at TIMESTAMP NOT NULL,
-    deployed_by TEXT NOT NULL,
-    status TEXT NOT NULL,
-    source_info JSON,
-    target_info JSON,
-    service JSON,
-    environment JSON,
-    health JSON,
-    tunnel_id TEXT,
-    metadata JSON,
-
-    FOREIGN KEY (server) REFERENCES servers(server_name),
-    FOREIGN KEY (tunnel_id) REFERENCES tunnel_registrations(tunnel_id)
-);
-
-CREATE INDEX idx_project_deploy ON vps_deployments(project);
-CREATE INDEX idx_server_deploy ON vps_deployments(server);
-CREATE INDEX idx_status_deploy ON vps_deployments(status);
-```
-
-### Table: servers
-
-```sql
-CREATE TABLE servers (
-    server_name TEXT PRIMARY KEY,
-    hostname TEXT NOT NULL,
-    ip TEXT NOT NULL,
-    location TEXT,
-    provider TEXT,
-    config JSON NOT NULL,
-    status TEXT NOT NULL,
-    last_health_check TIMESTAMP
-);
-```
-
----
-
-## 🔐 Data Validation Rules
-
-### Port Number Validation
+### Port allocation
 
 ```python
-def validate_port(port: int) -> bool:
-    """Validate port number is in allowed range"""
-    return 3000 <= port <= 9999
-
-def is_port_available(port: int, server: str) -> bool:
-    """Check if a port is available on a specific server"""
-    allocations = load_port_allocations()
-    return not any(
-        a['port'] == port
-        and a['server'] == server
-        and a['status'] != 'released'
-        for a in allocations
-    )
+PortAllocation(
+    allocation_id = "alloc_20260513_001",
+    port          = 8000,
+    project       = "infra-mcp",
+    service       = "api",
+    server        = "asablue",
+    allocated_at  = datetime(2026, 5, 13, ...),
+    allocated_by  = "mcp-server",
+    status        = AllocationStatus.IN_USE,
+    notes         = "infra-mcp FastAPI server"
+)
 ```
 
-### Hostname Validation
+### Main tunnel
 
 ```python
-def validate_hostname(hostname: str) -> bool:
-    """Validate hostname format and domain"""
-    import re
-    pattern = r'^[a-z0-9-]+\.your-domain\.com$'
-    return bool(re.match(pattern, hostname))
-
-def is_hostname_available(hostname: str) -> bool:
-    """Check if a hostname is already in use"""
-    tunnels = load_tunnel_registrations()
-    return not any(
-        t['hostname'] == hostname
-        and t['status'] != 'decommissioned'
-        for t in tunnels
-    )
+MainTunnel(
+    tunnel_name          = "asablue-main",
+    cloudflare_tunnel_id = "ce87659b-4df1-4787-b516-263b628aadf9",
+    vps_server           = "asablue",
+    tunnel_target        = "ce87659b-4df1-4787-b516-263b628aadf9.cfargotunnel.com",
+    credentials_file     = "~/.cloudflared/ce87659b-....json",
+    config_file          = "~/.cloudflared/config.yml",
+    systemd_service      = "cloudflared-asablue-main",
+    status               = MainTunnelStatus.ACTIVE,
+)
 ```
 
-### Project Name Validation
+### Service deployment
 
 ```python
-def validate_project_name(name: str) -> bool:
-    """Validate project name format"""
-    import re
-    pattern = r'^[a-z0-9-]+$'
-    return bool(re.match(pattern, name)) and len(name) >= 2
+ServiceDeployment(
+    deployment_id  = "deploy_infra-mcp_api_asablue",
+    project        = "infra-mcp",
+    service        = "api",
+    server         = "asablue",
+    service_type   = ServiceType.FLASK,
+    port           = 8000,
+    hostname       = "infra.nowhere.tw",
+    tunnel_name    = "asablue-main",
+    app_path       = "~/PRJ/infra-mcp/",
+    status         = DeploymentStatus.DEPLOYED,
+    registered_at  = datetime(2026, 5, 13, ...),
+    deployed_at    = datetime(2026, 5, 13, ...),
+)
 ```
 
 ---
 
-## 📝 Migration Plan (JSON → SQLite)
+## Migrations
 
-### Step 1: Schema Creation
-
-```python
-# main/db/migrate.py
-def create_schema(conn):
-    """Create SQLite schema"""
-    conn.executescript(open('schema.sql').read())
-```
-
-### Step 2: Data Migration
-
-```python
-def migrate_from_json(json_path: str, db_path: str):
-    """Migrate from JSON to SQLite"""
-    import json
-    import sqlite3
-
-    # Read JSON
-    with open(json_path) as f:
-        data = json.load(f)
-
-    # Connect to SQLite
-    conn = sqlite3.connect(db_path)
-
-    # Migrate port allocations
-    for alloc in data['port_allocations']:
-        conn.execute('''
-            INSERT INTO port_allocations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            alloc['allocation_id'],
-            alloc['port'],
-            alloc['project'],
-            alloc['service'],
-            alloc['server'],
-            alloc['allocated_at'],
-            alloc['allocated_by'],
-            alloc['status'],
-            alloc.get('notes'),
-            json.dumps(alloc.get('metadata', {}))
-        ))
-
-    # Migrate other data...
-
-    conn.commit()
-```
-
-### Step 3: Backward Compatibility
-
-When implementing Phase 2, provide:
-- Auto-detect JSON/SQLite
-- One-way JSON → SQLite sync tool
-- Fallback mechanism (in case SQLite has issues)
+No migration tooling is currently set up. Schema changes require:
+1. Stop the service
+2. Rename or back up `resources.db`
+3. Restart (SQLAlchemy `create_all` will build new schema)
+4. Re-register resources via MCP tools
 
 ---
 
-## 📚 Example Queries (SQLite)
+## Changelog
 
-### Query All Resources for a Project
+### v2.0 (2026-05-16)
+- Rewritten from actual SQLAlchemy models
+- Replaced design-phase JSON examples with real column definitions
+- Removed "Phase 2 SQLite migration" — SQLite is already in production
+- Removed PostgreSQL Phase 3 planning content
+- Added enum tables, relationship diagram, example records
 
-```sql
--- Query all resources for the my-app project
-SELECT
-    'port' as resource_type,
-    pa.port as resource_value,
-    pa.service,
-    pa.status
-FROM port_allocations pa
-WHERE pa.project = 'my-app'
-
-UNION ALL
-
-SELECT
-    'tunnel' as resource_type,
-    tr.hostname as resource_value,
-    tr.tunnel_name as service,
-    tr.status
-FROM tunnel_registrations tr
-WHERE tr.project = 'my-app'
-
-UNION ALL
-
-SELECT
-    'deployment' as resource_type,
-    vd.server as resource_value,
-    json_extract(vd.service, '$.name') as service,
-    vd.status
-FROM vps_deployments vd
-WHERE vd.project = 'my-app';
-```
-
-### Resource Usage Statistics per Server
-
-```sql
-SELECT
-    s.server_name,
-    s.hostname,
-    COUNT(DISTINCT pa.port) as ports_allocated,
-    COUNT(DISTINCT tr.tunnel_id) as tunnels_active,
-    COUNT(DISTINCT vd.deployment_id) as deployments_running
-FROM servers s
-LEFT JOIN port_allocations pa ON pa.server = s.server_name AND pa.status = 'in-use'
-LEFT JOIN tunnel_registrations tr ON tr.vps_server = s.server_name AND tr.status = 'active'
-LEFT JOIN vps_deployments vd ON vd.server = s.server_name AND vd.status = 'running'
-GROUP BY s.server_name;
-```
-
-### Find Reclaimable Resources
-
-```sql
--- Find ports allocated but unused for more than 30 days
-SELECT
-    pa.port,
-    pa.project,
-    pa.service,
-    pa.allocated_at,
-    julianday('now') - julianday(pa.allocated_at) as days_since_allocation
-FROM port_allocations pa
-LEFT JOIN vps_deployments vd ON vd.project = pa.project
-    AND json_extract(vd.service, '$.port') = pa.port
-WHERE pa.status = 'allocated'
-    AND vd.deployment_id IS NULL
-    AND julianday('now') - julianday(pa.allocated_at) > 30;
-```
-
----
-
-**Document maintenance**: Updated as data structures evolve
-**Next review**: When Phase 1 implementation is complete
-**Maintainer**: Infrastructure Team
+### v1.0 (2025-12-28)
+- Initial design document (JSON storage, SQLite as future phase)

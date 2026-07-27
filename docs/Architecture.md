@@ -1,571 +1,232 @@
-# Infrastructure MCP Server - Complete Architecture Design
+# Infrastructure MCP Server — Architecture
 
-**Document version**: v1.0
-**Last updated**: 2025-12-28
-**Status**: Design Phase
-
----
-
-## 📖 Executive Summary
-
-Infrastructure Management MCP is a centralized infrastructure resource management system built on the Model Context Protocol (MCP). It provides standardized tools through an MCP Server so that all projects can request and manage infrastructure resources (VPS, Cloudflare Tunnels, Ports, Domains) through Claude Code — avoiding resource conflicts and improving organizational scalability.
-
-### Core Value
-
-1. **Centralized management, conflict prevention**
-   - All port allocations, tunnel registrations, and domain usage are recorded in a central database
-   - Automatically detects and prevents resource conflicts (duplicate ports, subdomain collisions, etc.)
-
-2. **Standardized request workflow**
-   - Projects request resources through unified MCP tools
-   - No need to manually edit config files or SSH into servers
-   - Reduces human error and configuration inconsistencies
-
-3. **Extensible architecture**
-   - Easily add new VPS servers
-   - Supports multiple Cloudflare accounts
-   - Can integrate additional cloud services in the future (AWS, GCP, etc.)
-
-4. **Full traceability**
-   - Records who requested what resource and when
-   - Simplifies auditing and cost analysis
-   - Streamlines resource reclamation
+**Document version**: v2.0
+**Last updated**: 2026-05-16
+**Status**: Production
 
 ---
 
-## 🎯 Design Goals
+## Summary
 
-### Must Have (Phase 1)
-- ✅ MCP Server core framework (Claude Desktop integration)
-- ✅ 4 core MCP tools (allocate_port, register_tunnel, deploy_tunnel, list_resources)
-- ✅ JSON file-based resource database
-- ✅ Basic resource conflict detection
-- ✅ prod VPS support
-- ✅ Reference deployment scripts (optional)
-
-### Should Have (Phase 2)
-- 📋 SQLite/PostgreSQL database
-- 📋 Automatic resource reclamation
-- 📋 Usage statistics and cost analysis
-- 📋 Web UI (resource usage dashboard)
-- 📋 Multi-VPS server support
-
-### Could Have (Phase 3)
-- 💡 Cloudflare Workers auto-deployment
-- 💡 Cloudflare R2 storage management
-- 💡 Automated SSL certificate management
-- 💡 Load balancing configuration
-- 💡 Backup and disaster recovery
+Infrastructure MCP Server is a self-hosted HTTP MCP server that centralises infrastructure resource management. Claude Code connects to it as a remote MCP server and uses its 38 tools to allocate ports, register services, manage Cloudflare Tunnels/DNS/Access, and control Gitea repositories — all without directly SSH-ing into servers or editing config files.
 
 ---
 
-## 🏗️ System Architecture
-
-### High-Level Overview
+## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Claude Code / Claude Desktop             │
-│                    (using MCP tools in any project)          │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         │ MCP Protocol
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Infrastructure MCP Server                 │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐        │
-│  │ allocate    │  │ register    │  │ deploy       │        │
-│  │ _port       │  │ _tunnel     │  │ _tunnel      │        │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬───────┘        │
-│         │                 │                 │                │
-│         └─────────────────┴─────────────────┘                │
-│                           │                                  │
-│                           ▼                                  │
-│                  ┌─────────────────┐                         │
-│                  │ Resource Manager │                         │
-│                  │  (allocation logic) │                      │
-│                  └────────┬─────────┘                         │
-│                           │                                  │
-│         ┌─────────────────┼─────────────────┐                │
-│         ▼                 ▼                 ▼                │
-│  ┌─────────────┐  ┌─────────────┐  ┌──────────────┐         │
-│  │ Port Pool   │  │ Tunnel      │  │ VPS Server   │         │
-│  │ Manager     │  │ Registry    │  │ Deployer     │         │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬───────┘         │
-│         │                 │                 │                │
-└─────────┼─────────────────┼─────────────────┼────────────────┘
-          │                 │                 │
-          ▼                 ▼                 ▼
-   ┌─────────────────────────────────────────────────┐
-   │          Resource Database (JSON/SQLite)        │
-   │  - Port allocations                              │
-   │  - Tunnel registrations                          │
-   │  - Server deployments                            │
-   │  - Resource ownership                            │
-   └──────────────────────┬──────────────────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          ▼               ▼               ▼
-   ┌──────────┐   ┌─────────────┐  ┌────────────┐
-   │ prod     │   │ Cloudflare  │  │ Future VPS │
-   │ VPS      │   │ API         │  │ Servers    │
-   └──────────┘   └─────────────┘  └────────────┘
+┌──────────────────────────────────────┐
+│          Claude Code (client)         │
+│   (any project, any machine)          │
+└──────────────┬───────────────────────┘
+               │ JSON-RPC 2.0 over HTTPS
+               │ Authorization: Bearer <MCP_API_KEY>
+               ▼
+┌──────────────────────────────────────────────────────┐
+│        Infrastructure MCP Server (FastAPI)            │
+│        https://infra.nowhere.tw/mcp                   │
+│        running on: asablue VPS                        │
+│                                                       │
+│  ┌──────────────────────────────────────────────┐    │
+│  │              Tool Handlers (38 tools)         │    │
+│  │  ports │ services │ tunnels │ dns │ access    │    │
+│  │  gitea │ cloudflare-api │ inventory           │    │
+│  └──────────────────┬───────────────────────────┘    │
+│                     │                                 │
+│         ┌───────────┴────────────┐                   │
+│         ▼                        ▼                   │
+│  ┌─────────────┐        ┌──────────────────┐         │
+│  │ SQLiteStore  │        │  External APIs   │         │
+│  │ resources.db │        │  - Cloudflare    │         │
+│  └─────────────┘        │  - Gitea         │         │
+│                          └──────────────────┘         │
+└──────────────────────────┬───────────────────────────┘
+                           │ SSH (paramiko)
+         ┌─────────────────┼──────────────────┐
+         ▼                 ▼                  ▼
+   ┌──────────┐      ┌──────────┐      ┌──────────┐
+   │ asablue  │      │ pulongon │      │ hello /  │
+   │ (prod)   │      │ (dev)    │      │ world    │
+   └──────────┘      └──────────┘      └──────────┘
 ```
-
-### Component Details
-
-#### 1. MCP Server Core
-**Responsibilities**:
-- Handle MCP tool calls from Claude
-- Parameter validation and error handling
-- Return results to Claude
-
-**Technology**:
-- Python 3.11+
-- MCP SDK (Anthropic)
-- FastAPI (optional, for future Web UI)
-
-#### 2. Resource Manager
-**Responsibilities**:
-- Unified resource allocation logic
-- Conflict detection (duplicate ports, subdomain collisions)
-- Resource state tracking (allocated, in-use, released)
-
-**Key functions**:
-```python
-class ResourceManager:
-    def allocate_port(self, project, service, preferred_port=None):
-        # 1. Check if preferred_port is available
-        # 2. If not, allocate the next available port from the pool
-        # 3. Record allocation in the database
-        # 4. Return the allocated port
-        pass
-
-    def register_tunnel(self, project, tunnel_name, hostname, target_port):
-        # 1. Verify hostname is not already in use
-        # 2. Verify target_port is allocated to this project
-        # 3. Create tunnel config file
-        # 4. Register in the database
-        pass
-```
-
-#### 3. Port Pool Manager
-**Responsibilities**:
-- Manage available port range (3000-9999)
-- Track allocated ports
-- Support port reclamation
-
-**Port allocation strategy**:
-- System ports (0-1023): Reserved, not used
-- Registered ports (1024-2999): Reserved, not used
-- User ports (3000-9999): Allocatable range
-- Preferred ports are honored if available
-- Otherwise, the smallest unallocated port in range is assigned
-
-#### 4. Tunnel Registry
-**Responsibilities**:
-- Manage Cloudflare Tunnel configurations
-- Generate tunnel config YAML
-- Update DNS records (via Cloudflare API)
-- Create/update systemd services on VPS
-
-**Tunnel lifecycle**:
-```
-1. Registration phase (register_tunnel)
-   - Create config-<tunnel-name>.yml
-   - Configure DNS CNAME record
-
-2. Deployment phase (deploy_tunnel)
-   - Copy config to VPS
-   - Create systemd service
-   - Start tunnel
-
-3. Running phase
-   - Monitor tunnel status (future)
-   - Log management
-
-4. Reclamation phase (future)
-   - Stop tunnel
-   - Delete DNS record
-   - Release port
-```
-
-#### 5. VPS Server Deployer
-**Responsibilities**:
-- SSH into VPS servers
-- Deploy applications (Flask, Node.js, etc.)
-- Create systemd services
-- Start and monitor services
-
-**Supported deployment types**:
-- Flask application (Python)
-- Express/Fastify application (Node.js)
-- Static site (Caddy/Nginx)
-- Docker container (Phase 2)
 
 ---
 
-## 📊 Data Models
+## Component Breakdown
 
-### Resource Allocation Record
+### FastAPI Application (`main/server.py`)
 
-```json
-{
-  "allocation_id": "alloc_20251228_001",
-  "resource_type": "port",
-  "resource_value": 3000,
-  "project": "my-app",
-  "service": "web-server",
-  "allocated_at": "2025-12-28T10:00:00Z",
-  "allocated_by": "claude-code",
-  "status": "in-use",
-  "notes": "Main application server"
-}
+- **Protocol**: MCP over HTTP (JSON-RPC 2.0, `POST /mcp`)
+- **Auth**: Optional `Bearer` token middleware (constant-time comparison)
+- **CORS**: Allows `localhost` + the configured `INFRA_DOMAIN`
+- **Lifecycle**: `asynccontextmanager` initialises and closes the SQLite connection at startup/shutdown
+- **Error handling**: `RequestValidationError` handler returns JSON-RPC `-32600`; `InvalidParamsError` returns `-32602`
+
+### Tool Layer (`main/tools/`)
+
+Tool modules are imported directly into `server.py`. Each module exports:
+- A `validate_*_input(arguments)` async function that returns `(bool, error_str)`
+- A main `async def tool_name(store, ...)` function that returns a result dict
+
+Tool files are grouped:
+```
+main/tools/
+├── allocate_port.py
+├── release_port.py
+├── list_resources.py
+├── register_main_tunnel.py
+├── list_main_tunnels.py
+├── register_service.py
+├── deploy_service.py
+├── stop_service.py
+├── purge_service.py
+├── upgrade_service.py
+├── get_service_info.py
+├── check_listening_ports.py
+├── validate_service_security.py
+├── audit_all_services.py
+├── restart_service.py
+├── get_caddy_config.py
+├── get_tunnel_config.py
+├── get_service_logs.py
+├── check_service_health.py
+└── cloudflare/
+    ├── dns.py       (create/update/delete/list)
+    ├── access.py    (create/delete/list apps + list policies)
+    └── tunnel.py    (create/delete/list tunnel, token, hostnames)
+└── gitea/
+    ├── create_repo.py
+    ├── list_repos.py
+    ├── get_repo.py
+    └── delete_repo.py
 ```
 
-### Tunnel Registration Record
+### Database Layer (`main/db/sqlite_store.py`)
 
-```json
-{
-  "tunnel_id": "tunnel_20251228_001",
-  "tunnel_name": "myapp",
-  "project": "my-app",
-  "hostname": "myapp.your-domain.com",
-  "target_service": "http://localhost:3000",
-  "target_port": 3000,
-  "vps_server": "prod",
-  "config_path": "/home/your_user/.cloudflared/config-myapp.yml",
-  "credentials_file": "/home/your_user/.cloudflared/<tunnel-id>.json",
-  "systemd_service": "cloudflared-myapp.service",
-  "registered_at": "2025-12-28T10:15:00Z",
-  "status": "active",
-  "dns_configured": true
-}
-```
+- **Engine**: SQLAlchemy async with SQLite
+- **Database file**: `~/PRJ/infra-mcp/configs/resources.db` (production)
+- Stores port allocations, service registrations, and main tunnel records
+- See [`Data-Models.md`](./Data-Models.md) for table schemas
 
-### VPS Server Configuration
+### Config (`main/config.py`)
 
-```yaml
-servers:
-  prod:
-    hostname: prod.your-domain.com
-    ip: YOUR_SERVER_IP
-    location: Germany
-    provider: your-provider
-    plan: RS 1000 G12
-    specs:
-      cpu: AMD EPYC 9645 (4 cores)
-      ram: 7.8GB
-      disk: 256GB NVMe
-      network: 1Gbps
-    os: Debian 13 (trixie)
-    ssh:
-      user: your_user
-      port: 22
-      key_path: ~/.ssh/id_ed25519
-    capabilities:
-      - flask_app
-      - nodejs_app
-      - static_site
-      - cloudflared_tunnel
-    port_range:
-      start: 3000
-      end: 9999
-    status: active
-```
-
-See [`Data-Models.md`](./Data-Models.md) for detailed data model definitions.
+Reads server topology from environment:
+- `INFRA_SERVERS` — list of known VPS server names
+- `INFRA_DEFAULT_SERVER` — default server when not specified
+- `INFRA_DOMAIN` — server's own public hostname
 
 ---
 
-## 🔧 MCP Tools Specification
+## Deployment
 
-### 1. allocate_port
+### Production
 
-**Purpose**: Allocate an available port for a project service
-
-**Input parameters**:
-```json
-{
-  "project": "string (required)",
-  "service": "string (required)",
-  "preferred_port": "number (optional)"
-}
+```
+Server:     asablue (Netcup DE, 4C/8GB/256GB)
+Directory:  ~/PRJ/infra-mcp/
+Bind:       127.0.0.1:8000  (systemd service)
+Public URL: https://infra.nowhere.tw/mcp  (via Cloudflare Tunnel + CF Access)
+Database:   ~/PRJ/infra-mcp/configs/resources.db
 ```
 
-**Output**:
-```json
-{
-  "success": true,
-  "allocated_port": 3000,
-  "allocation_id": "alloc_20251228_001",
-  "message": "Port 3000 allocated to my-app/web-server"
-}
-```
+**Two-layer authentication**:
+1. Cloudflare Access (email OTP / service token) — protects the public hostname
+2. `MCP_API_KEY` Bearer token — validates the MCP client itself
 
-**Usage example**:
-```
-<user>: My project needs a port to run a web server
-<claude>: Using allocate_port tool
-  project: "my-app"
-  service: "web-server"
-  preferred_port: 3000
-<result>: Port 3000 allocated to my-app/web-server
-```
+**systemd service**: `infra-mcp-api.service`
 
-### 2. register_tunnel
-
-**Purpose**: Register a Cloudflare Tunnel configuration
-
-**Input parameters**:
-```json
-{
-  "project": "string (required)",
-  "tunnel_name": "string (required)",
-  "hostname": "string (required)",
-  "target_port": "number (required)",
-  "vps_server": "string (default: prod)"
-}
-```
-
-**Output**:
-```json
-{
-  "success": true,
-  "tunnel_id": "tunnel_20251228_001",
-  "hostname": "myapp.your-domain.com",
-  "config_path": "/home/your_user/.cloudflared/config-myapp.yml",
-  "dns_instructions": "CNAME record created: myapp.your-domain.com -> <tunnel-id>.cfargotunnel.com",
-  "message": "Tunnel myapp registered successfully"
-}
-```
-
-### 3. deploy_tunnel
-
-**Purpose**: Deploy a Cloudflare Tunnel to a VPS server
-
-**Input parameters**:
-```json
-{
-  "tunnel_name": "string (required, must be registered first)",
-  "server": "string (default: prod)"
-}
-```
-
-**Output**:
-```json
-{
-  "success": true,
-  "tunnel_name": "myapp",
-  "server": "prod",
-  "service_name": "cloudflared-myapp.service",
-  "status": "running",
-  "hostname": "myapp.your-domain.com",
-  "connections": 4,
-  "message": "Tunnel deployed and started successfully"
-}
-```
-
-### 4. list_resources
-
-**Purpose**: List all resource usage
-
-**Input parameters**:
-```json
-{
-  "resource_type": "all|port|tunnel|deployment (default: all)",
-  "project": "string (optional, filter by project)",
-  "server": "string (optional, filter by server)"
-}
-```
-
-**Output**:
-```json
-{
-  "success": true,
-  "resources": {
-    "ports": [
-      {
-        "port": 3000,
-        "project": "my-app",
-        "service": "web-server",
-        "status": "in-use"
-      }
-    ],
-    "tunnels": [
-      {
-        "name": "myapp",
-        "hostname": "myapp.your-domain.com",
-        "project": "my-app",
-        "status": "active"
-      }
-    ],
-    "deployments": [
-      {
-        "project": "my-app",
-        "server": "prod",
-        "service": "myapp-web.service",
-        "status": "running"
-      }
-    ]
-  },
-  "summary": {
-    "total_ports_allocated": 1,
-    "total_tunnels_active": 1,
-    "total_deployments": 1
-  }
-}
-```
-
-See [`MCP-API.md`](./MCP-API.md) for the complete API specification.
-
----
-
-## 🔐 Security Considerations
-
-### Authentication & Authorization
-
-**Phase 1** (current design):
-- MCP Server runs locally and only accepts requests from Claude Desktop
-- SSH key-based authentication to VPS servers
-- Cloudflare API token stored in environment variables
-
-**Phase 2** (future improvements):
-- Multi-user support (team members)
-- Role-based access control (RBAC)
-- Audit logs for all resource operations
-
-### Secrets Management
-
-- SSH private keys: `~/.ssh/id_ed25519`
-- Cloudflare API token: environment variable `CLOUDFLARE_API_TOKEN`
-- VPS sudo password: environment variable (prod has NOPASSWD sudo, not needed currently)
-- Future: consider HashiCorp Vault or 1Password CLI
-
-### Network Security
-
-- All VPS servers only open SSH port 22
-- All web traffic goes through Cloudflare Tunnel (Zero Trust)
-- Tunnel credential file permissions set to 600 (owner read/write only)
-
----
-
-## 🚀 Deployment Strategy
-
-### Development Environment
+### Local Development
 
 ```bash
-# Local machine
-cd ~/infra-mcp/
-python -m venv venv
-source venv/bin/activate
+cd ~/PROJECTS/infra-mcp/repo
+python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-
-# Set environment variables
-export CLOUDFLARE_API_TOKEN="your_token_here"
-
-# Start MCP server
-python main/mcp_server.py
+cp .env.example .env  # fill in tokens
+uvicorn main.server:app --reload --port 8000
 ```
 
-### Production Environment
+---
 
-**MCP Server location**: Local development machine (Mac)
-- Reason: MCP Server needs to integrate with Claude Desktop
-- Database: Local JSON file (Phase 1) or SQLite (Phase 2)
+## VPS Connectivity
 
-**Resource deployment target**: VPS servers (prod, etc.)
-- Remote deployment via SSH
-- systemd manages service lifecycle
+Tools that act on VPS servers (service management, log retrieval, config reading) connect via SSH using [paramiko](https://www.paramiko.org/). SSH credentials are read from env vars:
+- `SSH_KEY_PATH` — path to private key (default: `~/.ssh/id_ed25519`)
+- Server hostnames/users defined in `INFRA_SERVERS` config
 
-**Future considerations**:
-- MCP Server can be deployed to the cloud (for remote team support)
-- Protect with HTTPS and authentication tokens
+**Known servers**:
+| Alias | Provider | Location | Role |
+|-------|----------|----------|------|
+| `asablue` | Netcup DE | Germany | Production |
+| `pulongon` | Oracle JP | Japan | Dev/ARM |
+| `hello` | Oracle JP | Japan | Dev/x86 |
+| `world` | Oracle JP | Japan | Dev/x86 |
 
 ---
 
-## 📈 Scalability Plan
+## External API Integrations
 
-### Multi-VPS Support
+### Cloudflare
 
-```yaml
-servers:
-  prod:
-    # ... existing config
+Environment variables:
+- `CF_API_TOKEN` — Cloudflare API token (Zone:Edit, Access:Edit, Tunnel:Edit)
+- `CF_ACCOUNT_ID` — Cloudflare account ID
+- `CF_ZONE_ID` — default zone (can be derived from domain)
 
-  server2:
-    hostname: server2.your-domain.com
-    # ... new server config
+Used by: DNS tools, Access tools, Tunnel API tools
 
-  server3:
-    hostname: server3.your-domain.com
-    # ... new server config
+### Gitea
+
+Environment variables:
+- `GITEA_URL` — Gitea base URL (e.g., `https://git.nowhere.tw`)
+- `GITEA_TOKEN` — personal access token
+
+---
+
+## Security Model
+
+| Layer | Mechanism |
+|-------|-----------|
+| Public network | Cloudflare Tunnel + CF Access (email/service token) |
+| MCP client auth | `MCP_API_KEY` Bearer token (constant-time comparison) |
+| VPS access | SSH key (`~/.ssh/id_ed25519`), no password |
+| Cloudflare API | Scoped API token in env var |
+| Service binding | All services bind to `127.0.0.1` only (enforced by `check_listening_ports` / `validate_service_security`) |
+
+---
+
+## Typical Workflows
+
+### New service deployment
+```
+1. allocate_port          → reserve a port in DB
+2. register_service       → record service config in DB
+3. deploy_service         → SSH to VPS: create systemd + Caddy config + start
+4. add_public_hostname    → add route to CF Tunnel (no config.yml needed)
 ```
 
-Resource Manager will automatically:
-- Select the server with the lowest load
-- Or let the user specify the target server
-
-### Multiple Cloudflare Accounts
-
-```yaml
-cloudflare_accounts:
-  primary:
-    email: your@email.com
-    api_token: ${CLOUDFLARE_API_TOKEN}
-    domains:
-      - your-domain.com
-
-  client_a:
-    email: client@example.com
-    api_token: ${CLIENT_A_CF_TOKEN}
-    domains:
-      - client-domain.com
+### Security audit
+```
+1. audit_all_services     → scan all registered services for misconfigs
+2. validate_service_security {project, service} → deep-check one service
+3. check_listening_ports  → verify no service is exposed beyond 127.0.0.1
 ```
 
-### Port Pool Expansion
-
-When a single server runs low on ports:
-- Automatically allocate on other VPS servers
-- Or prompt the user to add more servers
-
----
-
-## 🎯 Success Metrics
-
-### Phase 1 Completion Criteria
-
-- ✅ Successfully allocate at least 5 ports via MCP tools
-- ✅ Successfully register at least 3 Cloudflare Tunnels
-- ✅ Successfully deploy at least 2 applications to prod
-- ✅ Zero port conflicts, zero subdomain collisions
-- ✅ Full resource usage records (traceable)
-
-### Phase 2 Goals
-
-- 📊 Support at least 3 VPS servers
-- 📊 Manage 20+ active tunnels
-- 📊 Resource usage dashboard (Web UI)
-- 📊 Automated resource reclamation
-
-### Phase 3 Vision
-
-- 💡 Support an entire organization (10+ team members)
-- 💡 CI/CD pipeline integration
-- 💡 Cost tracking and optimization recommendations
-- 💡 Disaster recovery and high availability
+### Tear down a service
+```
+1. remove_public_hostname → stop routing traffic from CF Tunnel
+2. purge_service          → stop systemd, remove Caddy config, release port
+```
 
 ---
 
-## 📚 References
+## Changelog
 
-- [Model Context Protocol (MCP) Documentation](https://modelcontextprotocol.io/)
-- [Cloudflare Tunnel Documentation](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/)
-- [systemd Service Management](https://www.freedesktop.org/software/systemd/man/systemd.service.html)
+### v2.0 (2026-05-16)
+- Rewritten to reflect production state
+- Removed design-phase content (JSON DB, Phase 1/2/3 goals)
+- Documented actual deployment (asablue, CF Tunnel + CF Access auth)
+- Updated tool count (38, not 4)
+- Added VPS connectivity, external API, and security model sections
 
----
-
-**Document maintenance**: Updated as the project evolves
-**Next review**: 2025-01-15
-**Maintainer**: Infrastructure Team
+### v1.0 (2025-12-28)
+- Initial design document
