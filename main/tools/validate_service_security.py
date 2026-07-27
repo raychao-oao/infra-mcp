@@ -13,7 +13,7 @@ import re
 
 from main.config import INFRA_SERVERS
 from main.utils import get_service_name, q
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 
 from main.db.sqlite_store import SQLiteStore
 from main.models.service_deployment import ServiceType
@@ -61,8 +61,12 @@ async def validate_service_security(
     svc_name = get_service_name(project, service, deployment.systemd_config)
 
     # Check 1: Caddy configuration
-    caddy_file = f"/etc/caddy/sites/{svc_name}.caddy"
-    caddy_check = await _check_caddy_config(server, caddy_file, project, service, auto_fix)
+    caddy_files, located_by = await _locate_caddy_configs(
+        server, svc_name, deployment.hostname, port, deployment.static_path
+    )
+    caddy_check = await _check_caddy_config(
+        server, caddy_files, located_by, project, service, auto_fix
+    )
     checks.append(caddy_check)
     if not caddy_check["passed"]:
         issues.extend(caddy_check["issues"])
@@ -138,66 +142,158 @@ async def validate_service_security(
     return result
 
 
+CADDY_SITES_DIR = "/etc/caddy/sites"
+
+
+async def _locate_caddy_configs(
+    server: str,
+    svc_name: str,
+    hostname: Optional[str],
+    port: Optional[int],
+    static_path: Optional[str]
+) -> Tuple[List[str], str]:
+    """
+    Find the Caddy site file(s) serving a deployment.
+
+    Returns (paths, how_they_were_found). Empty paths means no site file
+    references this service.
+
+    Deriving the path as `{svc_name}.caddy` and stopping there is what made this
+    check useless: real filenames follow the *hostname*, not the project —
+    `iam.caddy` for nowhere-iam, `kb.caddy` for knowledge-factory,
+    `sandbox.caddy` for sa-integration. Every audited service therefore reported
+    "config not found" and scored 0.0, so the tool stopped being trusted.
+
+    Strategies, in order of confidence:
+      1. the conventional filename, when it happens to exist
+      2. the hostname — a Caddy site block is keyed by it, so this is the most
+         reliable signal, and every deployment record carries one
+      3. the backend port — covers anything behind `reverse_proxy`
+      4. the static root — last resort for `file_server` sites, and only an
+         exact match: records drift from what Caddy serves (sa-integration has
+         `/var/www/sa-integration/static` on record while Caddy roots one level
+         up at `/var/www/sa-integration`)
+
+    More than one file can legitimately match: two hostnames may proxy the same
+    backend port, so this returns all of them and every one gets checked.
+    """
+    # 1. Conventional filename — cheapest, and correct often enough to try first.
+    guess = f"{CADDY_SITES_DIR}/{svc_name}.caddy"
+    result = run_command(server, f"test -f {q(guess)}", timeout=10)
+    if result.returncode == 0:
+        return [guess], "conventional filename"
+
+    # 2. By hostname. -F keeps the dots literal; -w stops foo.example.com from
+    #    matching xfoo.example.com.
+    if hostname:
+        result = run_command(
+            server,
+            f"sudo grep -lwF -e {q(hostname)} {CADDY_SITES_DIR}/*.caddy 2>/dev/null",
+            timeout=10
+        )
+        paths = [p for p in result.stdout.strip().split("\n") if p]
+        if paths:
+            return paths, f"hostname {hostname}"
+
+    # 3. By backend port. -w prevents :3003 from matching :30031.
+    if port:
+        result = run_command(
+            server,
+            f"sudo grep -lw -e {q(f'localhost:{int(port)}')} "
+            f"-e {q(f'127.0.0.1:{int(port)}')} {CADDY_SITES_DIR}/*.caddy 2>/dev/null",
+            timeout=10
+        )
+        paths = [p for p in result.stdout.strip().split("\n") if p]
+        if paths:
+            return paths, f"reverse_proxy to port {port}"
+
+    # 4. By static root, for file_server sites that never mention a port.
+    if static_path:
+        result = run_command(
+            server,
+            f"sudo grep -lw -e {q(static_path)} {CADDY_SITES_DIR}/*.caddy 2>/dev/null",
+            timeout=10
+        )
+        paths = [p for p in result.stdout.strip().split("\n") if p]
+        if paths:
+            return paths, f"static root {static_path}"
+
+    return [], "not found"
+
+
 async def _check_caddy_config(
     server: str,
-    caddy_file: str,
+    caddy_files: List[str],
+    located_by: str,
     project: str,
     service: str,
     auto_fix: bool
 ) -> Dict[str, Any]:
-    """Check if Caddy configuration has bind 127.0.0.1."""
+    """Check that every Caddy site serving this service has bind 127.0.0.1."""
 
-    try:
-        result = run_command(server, f"sudo cat {q(caddy_file)} 2>/dev/null", timeout=10)
+    # No site file is not a security problem. Plenty of services are internal
+    # only and deliberately have no Caddy entry; whether their port is exposed
+    # is what _check_actual_port_binding decides. Failing here instead is what
+    # produced a permanent false positive for every service.
+    if not caddy_files:
+        return {
+            "check": "caddy_config",
+            "passed": True,
+            "details": (
+                f"No Caddy site references {project}/{service} — nothing to "
+                f"misconfigure (an internal-only service is expected to have none)"
+            )
+        }
 
-        if result.returncode != 0:
-            return {
-                "check": "caddy_config",
-                "passed": False,
-                "issues": [f"Caddy config file not found: {caddy_file}"],
-                "details": "Config file does not exist"
-            }
+    issues = []
+    fixed = []
+    checked = []
 
-        config_content = result.stdout
+    for caddy_file in caddy_files:
+        try:
+            result = run_command(server, f"sudo cat {q(caddy_file)} 2>/dev/null", timeout=10)
 
-        # Check for bind directive
-        has_bind = "bind 127.0.0.1" in config_content
+            if result.returncode != 0:
+                issues.append(f"Caddy config disappeared while reading it: {caddy_file}")
+                continue
 
-        if has_bind:
-            return {
-                "check": "caddy_config",
-                "passed": True,
-                "details": f"Caddy config correctly binds to 127.0.0.1"
-            }
-        else:
+            config_content = result.stdout
+
+            if "bind 127.0.0.1" in config_content:
+                checked.append(f"{caddy_file} (bound)")
+                continue
+
             issue = f"Caddy config missing 'bind 127.0.0.1' directive in {caddy_file}"
 
             if auto_fix:
-                # Attempt to fix by adding bind directive
                 fix_result = await _fix_caddy_bind(server, caddy_file, config_content)
                 if fix_result["success"]:
-                    return {
-                        "check": "caddy_config",
-                        "passed": False,
-                        "issues": [issue],
-                        "fixed": [f"Added 'bind 127.0.0.1' to {caddy_file}"],
-                        "details": "Auto-fixed: Added bind directive"
-                    }
+                    issues.append(issue)
+                    fixed.append(f"Added 'bind 127.0.0.1' to {caddy_file}")
+                    continue
 
-            return {
-                "check": "caddy_config",
-                "passed": False,
-                "issues": [issue],
-                "details": "Missing bind 127.0.0.1 directive"
-            }
+            issues.append(issue)
+            checked.append(f"{caddy_file} (NOT bound)")
 
-    except Exception as e:
-        return {
+        except Exception as e:
+            issues.append(f"Failed to check Caddy config {caddy_file}: {str(e)}")
+
+    if issues:
+        result_dict = {
             "check": "caddy_config",
             "passed": False,
-            "issues": [f"Failed to check Caddy config: {str(e)}"],
-            "details": str(e)
+            "issues": issues,
+            "details": f"Located by {located_by}: {', '.join(checked) or 'read failed'}"
         }
+        if fixed:
+            result_dict["fixed"] = fixed
+        return result_dict
+
+    return {
+        "check": "caddy_config",
+        "passed": True,
+        "details": f"Located by {located_by}: {', '.join(checked)}"
+    }
 
 
 async def _fix_caddy_bind(server: str, caddy_file: str, config_content: str) -> Dict[str, Any]:
