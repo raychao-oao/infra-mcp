@@ -42,13 +42,13 @@ class MainTunnel(Base):
     # Primary key - tunnel name (e.g., "prod-main")
     tunnel_name = Column(String, primary_key=True)
 
-    # Cloudflare Tunnel UUID (e.g., "ce87659b-4df1-4787-b516-263b628aadf9")
+    # Cloudflare Tunnel UUID (e.g., "a1b2c3d4-0000-0000-0000-000000000000")
     cloudflare_tunnel_id = Column(String, nullable=False, unique=True)
 
     # VPS server name (e.g., "prod", "staging")
     vps_server = Column(String, nullable=False, unique=True, index=True)
 
-    # Tunnel target (e.g., "ce87659b-4df1-4787-b516-263b628aadf9.cfargotunnel.com")
+    # Tunnel target (e.g., "a1b2c3d4-0000-0000-0000-000000000000.cfargotunnel.com")
     tunnel_target = Column(String, nullable=True)
 
     # Credentials file path (e.g., "~/.cloudflared/<uuid>.json")

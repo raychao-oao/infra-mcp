@@ -15,7 +15,8 @@
 
 set -euo pipefail
 
-REPO="${INFRA_MCP_REPO:-/home/jcchao/PRJ/infra-mcp}"
+# Defaults to the repo this script lives in, so no install path is hardcoded.
+REPO="${INFRA_MCP_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 SERVICE="${INFRA_MCP_SERVICE:-infra-mcp}"
 HEALTH_URL="${INFRA_MCP_HEALTH_URL:-http://127.0.0.1:8000/health}"
 HEALTH_RETRIES=10

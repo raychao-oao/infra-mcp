@@ -480,7 +480,7 @@ List Cloudflare Access policies.
 
 ## Gitea
 
-Manages repositories on the self-hosted Gitea instance (`git.nowhere.tw`). Credentials are read from the `GITEA_TOKEN` and `GITEA_URL` environment variables.
+Manages repositories on the self-hosted Gitea instance (`git.your-domain.com`). Credentials are read from the `GITEA_TOKEN` and `GITEA_URL` environment variables.
 
 ### `create_gitea_repo`
 

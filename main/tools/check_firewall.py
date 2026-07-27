@@ -3,8 +3,8 @@ check_firewall MCP Tool Implementation
 
 Check whether a host actually has a working, persistent packet filter.
 
-Written after 2026-07-27, when asablue was found serving six backend services
-and the Caddy admin API straight to the public internet. Its firewall had
+Written after 2026-07-27, when a production host was found serving six backend
+services and the Caddy admin API straight to the public internet. Its firewall had
 silently disappeared: the ufw package was in `rc` state (removed but not
 purged), the binary was gone, yet `/etc/ufw/ufw.conf` still said `ENABLED=yes`
 and `systemctl is-enabled ufw` still answered `enabled` — because that reads a
@@ -158,7 +158,7 @@ def _assess(firewall: Dict[str, str]) -> Dict[str, Any]:
         issues.append(
             "/etc/ufw/ufw.conf still says ENABLED=yes but the ufw binary is "
             "missing — this exact combination hid the absence of any firewall "
-            "on asablue for months"
+            "on prod for months"
         )
 
     if packages.get("ufw") == "ii" and persistent:

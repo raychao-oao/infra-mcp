@@ -56,9 +56,9 @@ Tracks the Cloudflare Tunnel running on each VPS. One tunnel per VPS — all ser
 MainTunnel (one per VPS)
 └── prod-main (CF tunnel UUID)
     └── All HTTPS traffic → Caddy :80
-        ├── infra.nowhere.tw → :8000
-        ├── app.nowhere.tw   → :3000
-        └── api.nowhere.tw   → :8080
+        ├── infra.your-domain.com → :8000
+        ├── app.your-domain.com   → :3000
+        └── api.your-domain.com   → :8080
 ```
 
 | Column | Type | Constraints | Description |
@@ -90,7 +90,7 @@ Records the configuration and lifecycle state of every managed service.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `deployment_id` | String | PK | Unique ID (e.g., `deploy_infra-mcp_api_asablue`) |
+| `deployment_id` | String | PK | Unique ID (e.g., `deploy_infra-mcp_api_prod`) |
 | `project` | String | NOT NULL, indexed | Project name |
 | `service` | String | NOT NULL, indexed | Service name |
 | `server` | String | NOT NULL, indexed | VPS server |
@@ -167,7 +167,7 @@ PortAllocation(
     port          = 8000,
     project       = "infra-mcp",
     service       = "api",
-    server        = "asablue",
+    server        = "prod",
     allocated_at  = datetime(2026, 5, 13, ...),
     allocated_by  = "mcp-server",
     status        = AllocationStatus.IN_USE,
@@ -179,13 +179,13 @@ PortAllocation(
 
 ```python
 MainTunnel(
-    tunnel_name          = "asablue-main",
-    cloudflare_tunnel_id = "ce87659b-4df1-4787-b516-263b628aadf9",
-    vps_server           = "asablue",
-    tunnel_target        = "ce87659b-4df1-4787-b516-263b628aadf9.cfargotunnel.com",
-    credentials_file     = "~/.cloudflared/ce87659b-....json",
+    tunnel_name          = "prod-main",
+    cloudflare_tunnel_id = "a1b2c3d4-0000-0000-0000-000000000000",
+    vps_server           = "prod",
+    tunnel_target        = "a1b2c3d4-0000-0000-0000-000000000000.cfargotunnel.com",
+    credentials_file     = "~/.cloudflared/a1b2c3d4-....json",
     config_file          = "~/.cloudflared/config.yml",
-    systemd_service      = "cloudflared-asablue-main",
+    systemd_service      = "cloudflared-prod-main",
     status               = MainTunnelStatus.ACTIVE,
 )
 ```
@@ -194,14 +194,14 @@ MainTunnel(
 
 ```python
 ServiceDeployment(
-    deployment_id  = "deploy_infra-mcp_api_asablue",
+    deployment_id  = "deploy_infra-mcp_api_prod",
     project        = "infra-mcp",
     service        = "api",
-    server         = "asablue",
+    server         = "prod",
     service_type   = ServiceType.FLASK,
     port           = 8000,
-    hostname       = "infra.nowhere.tw",
-    tunnel_name    = "asablue-main",
+    hostname       = "infra.your-domain.com",
+    tunnel_name    = "prod-main",
     app_path       = "~/PRJ/infra-mcp/",
     status         = DeploymentStatus.DEPLOYED,
     registered_at  = datetime(2026, 5, 13, ...),

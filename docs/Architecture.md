@@ -24,8 +24,8 @@ Infrastructure MCP Server is a self-hosted HTTP MCP server that centralises infr
                ▼
 ┌──────────────────────────────────────────────────────┐
 │        Infrastructure MCP Server (FastAPI)            │
-│        https://infra.nowhere.tw/mcp                   │
-│        running on: asablue VPS                        │
+│        https://infra.your-domain.com/mcp              │
+│        running on: the `prod` VPS                     │
 │                                                       │
 │  ┌──────────────────────────────────────────────┐    │
 │  │              Tool Handlers (38 tools)         │    │
@@ -45,8 +45,8 @@ Infrastructure MCP Server is a self-hosted HTTP MCP server that centralises infr
          ┌─────────────────┼──────────────────┐
          ▼                 ▼                  ▼
    ┌──────────┐      ┌──────────┐      ┌──────────┐
-   │ asablue  │      │ pulongon │      │ hello /  │
-   │ (prod)   │      │ (dev)    │      │ world    │
+   │   prod   │      │ staging  │      │  dev1 /  │
+   │          │      │          │      │   dev2   │
    └──────────┘      └──────────┘      └──────────┘
 ```
 
@@ -122,10 +122,10 @@ Reads server topology from environment:
 ### Production
 
 ```
-Server:     asablue (Netcup DE, 4C/8GB/256GB)
+Server:     prod (any VPS; 2 vCPU / 2 GB is ample)
 Directory:  ~/PRJ/infra-mcp/
 Bind:       127.0.0.1:8000  (systemd service)
-Public URL: https://infra.nowhere.tw/mcp  (via Cloudflare Tunnel + CF Access)
+Public URL: https://infra.your-domain.com/mcp  (via Cloudflare Tunnel + CF Access)
 Database:   ~/PRJ/infra-mcp/configs/resources.db
 ```
 
@@ -153,13 +153,12 @@ Tools that act on VPS servers (service management, log retrieval, config reading
 - `SSH_KEY_PATH` — path to private key (default: `~/.ssh/id_ed25519`)
 - Server hostnames/users defined in `INFRA_SERVERS` config
 
-**Known servers**:
-| Alias | Provider | Location | Role |
-|-------|----------|----------|------|
-| `asablue` | Netcup DE | Germany | Production |
-| `pulongon` | Oracle JP | Japan | Dev/ARM |
-| `hello` | Oracle JP | Japan | Dev/x86 |
-| `world` | Oracle JP | Japan | Dev/x86 |
+**Example server set** (aliases are yours to choose; they must match `~/.ssh/config`):
+| Alias | Role |
+|-------|------|
+| `prod` | Production |
+| `staging` | Staging |
+| `dev1`, `dev2` | Development |
 
 ---
 
@@ -177,7 +176,7 @@ Used by: DNS tools, Access tools, Tunnel API tools
 ### Gitea
 
 Environment variables:
-- `GITEA_URL` — Gitea base URL (e.g., `https://git.nowhere.tw`)
+- `GITEA_URL` — Gitea base URL (e.g., `https://git.your-domain.com`)
 - `GITEA_TOKEN` — personal access token
 
 ---
@@ -224,7 +223,7 @@ Environment variables:
 ### v2.0 (2026-05-16)
 - Rewritten to reflect production state
 - Removed design-phase content (JSON DB, Phase 1/2/3 goals)
-- Documented actual deployment (asablue, CF Tunnel + CF Access auth)
+- Documented actual deployment (prod, CF Tunnel + CF Access auth)
 - Updated tool count (38, not 4)
 - Added VPS connectivity, external API, and security model sections
 

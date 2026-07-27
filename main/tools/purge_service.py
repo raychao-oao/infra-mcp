@@ -77,10 +77,10 @@ async def purge_service(
 
     # Refuse to touch anything another live deployment still depends on.
     #
-    # This is not hypothetical. On 2026-07-27 the record for oao-services/
-    # knowledge-mcp still carried hostname kb.nowhere.tw, port 8094 and
-    # static_path /var/www/oao-services/ — all of which belong to its live
-    # successor knowledge-factory. Purging it would have disabled a running
+    # This is not hypothetical. On 2026-07-27 the record for a service that had
+    # been superseded months earlier still carried the hostname, port and
+    # static_path that by then belonged to its live successor — nobody updates
+    # the registry mid-migration. Purging it would have disabled a running
     # service's Caddy site and released a port that was actively serving.
     #
     # It did not blow up at the time only because the Caddy file was derived as
