@@ -21,7 +21,20 @@ RestartSec=10
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
+
+# When INFRA_LOCAL_SERVER names this machine, commands targeting it run here
+# rather than over SSH — inside this sandbox. Without the paths below every such
+# write fails with EROFS, so the server can manage every host except its own:
+# purge_service removes a Caddy site on a remote box but not on this one.
 ReadWritePaths=/home/YOUR_USER/infra-mcp/configs
+ReadWritePaths=/etc/caddy/sites
+ReadWritePaths=/var/www
+ReadWritePaths=/home/YOUR_USER/PRJ
+
+# /etc/systemd/system is deliberately absent. If this user has passwordless
+# sudo, write access to unit files is write access to root, and nothing here
+# creates units — only purge_service deletes them. Removing a unit stays a
+# manual step, now reported as a failed step instead of passed over in silence.
 
 [Install]
 WantedBy=multi-user.target

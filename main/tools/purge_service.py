@@ -153,12 +153,25 @@ async def purge_service(
             )
         }
 
+    # Anything that was asked for and did not happen. A purge that leaves the
+    # site serving must not report success — the whole point of calling it is
+    # that the service should be gone afterwards.
+    failures: List[str] = []
+
     try:
         # Step 1: Stop systemd service if running
         if deployment.service_type.value in ["flask", "nodejs", "flask+static"]:
             if deployment.status.value == "deployed":
+                # Stop the unit that was *located*, not one derived from the
+                # project and service names. Real units are named after what
+                # they run (sa-integration.service), and stopping a guessed name
+                # succeeds at stopping nothing.
+                unit_to_stop = (
+                    unit_path.rsplit("/", 1)[-1].removesuffix(".service")
+                    if unit_path else svc_name
+                )
                 stop_result = await stop_systemd_service(
-                    service_name=svc_name,
+                    service_name=unit_to_stop,
                     server=server
                 )
 
@@ -166,6 +179,7 @@ async def purge_service(
                     steps_completed.append("systemd_service_stopped")
                 else:
                     cleanup_info["systemd_stop_warning"] = stop_result.get("message")
+                    failures.append(f"stop unit {unit_to_stop}: {stop_result.get('message')}")
 
             # Step 2: Disable and remove systemd service file
             if unit_path:
@@ -179,6 +193,7 @@ async def purge_service(
                     cleanup_info["systemd_service_file"] = remove_result.get("service_file")
                 else:
                     cleanup_info["systemd_remove_warning"] = remove_result.get("message")
+                    failures.append(f"remove {unit_path}: {remove_result.get('message')}")
             else:
                 cleanup_info["systemd_note"] = (
                     f"No systemd unit found for {project}/{service}; nothing removed"
@@ -197,6 +212,13 @@ async def purge_service(
                     removed_any = True
                     steps_completed.append("caddy_config_removed")
                     cleanup_info.setdefault("caddy_config_files", []).append(caddy_file)
+                else:
+                    # Was silently dropped before: a failure here leaves the
+                    # hostname serving while the report claims a clean purge.
+                    cleanup_info.setdefault("caddy_remove_warnings", []).append(
+                        f"{caddy_file}: {caddy_result.get('message')}"
+                    )
+                    failures.append(f"remove {caddy_file}: {caddy_result.get('message')}")
 
             if removed_any:
                 # Step 4: Reload Caddy
@@ -206,6 +228,7 @@ async def purge_service(
                     steps_completed.append("caddy_reloaded")
                 else:
                     cleanup_info["caddy_reload_warning"] = reload_result.get("message")
+                    failures.append(f"reload caddy: {reload_result.get('message')}")
         elif deployment.hostname:
             cleanup_info["caddy_note"] = (
                 f"No Caddy site found for {deployment.hostname}; nothing removed"
@@ -223,6 +246,7 @@ async def purge_service(
                 cleanup_info["dns_record"] = deployment.hostname
             else:
                 cleanup_info["dns_remove_warning"] = dns_result.get("message")
+                failures.append(f"remove DNS {deployment.hostname}: {dns_result.get('message')}")
 
         # Step 6: Release port. The conflict check above already refused if
         # another live deployment records this port, so reaching here means it
@@ -239,45 +263,33 @@ async def purge_service(
                 cleanup_info["port_released"] = deployment.port
             else:
                 cleanup_info["port_release_warning"] = port_result.get("message")
+                failures.append(f"release port {deployment.port}: {port_result.get('message')}")
 
-        # Step 7: Delete files (if requested)
+        # Step 7: Delete files (if requested). Each failure is reported; these
+        # used to be dropped, so remove_static_files=true could do nothing at
+        # all and say nothing about it.
         files_removed = []
 
-        if remove_app_files and deployment.app_path:
-            app_result = await remove_directory(
-                path=deployment.app_path,
+        for label, requested, path in (
+            ("app_path", remove_app_files, deployment.app_path),
+            ("static_path", remove_static_files, deployment.static_path),
+            ("data_path", remove_data, deployment.data_path),
+            ("log_path", remove_logs, deployment.log_path),
+        ):
+            if not (requested and path):
+                continue
+            rm_result = await remove_directory(
+                path=path,
                 server=server,
                 project=project,
             )
-            if app_result["success"]:
-                files_removed.append(deployment.app_path)
-
-        if remove_static_files and deployment.static_path:
-            static_result = await remove_directory(
-                path=deployment.static_path,
-                server=server,
-                project=project,
-            )
-            if static_result["success"]:
-                files_removed.append(deployment.static_path)
-
-        if remove_data and deployment.data_path:
-            data_result = await remove_directory(
-                path=deployment.data_path,
-                server=server,
-                project=project,
-            )
-            if data_result["success"]:
-                files_removed.append(deployment.data_path)
-
-        if remove_logs and deployment.log_path:
-            logs_result = await remove_directory(
-                path=deployment.log_path,
-                server=server,
-                project=project,
-            )
-            if logs_result["success"]:
-                files_removed.append(deployment.log_path)
+            if rm_result["success"]:
+                files_removed.append(path)
+            else:
+                cleanup_info.setdefault("file_remove_warnings", []).append(
+                    f"{label} {path}: {rm_result.get('message')}"
+                )
+                failures.append(f"remove {label} {path}: {rm_result.get('message')}")
 
         if files_removed:
             steps_completed.append("files_removed")
@@ -327,6 +339,28 @@ async def purge_service(
                 "steps_completed": steps_completed,
             }
         deployment = purged
+
+        if failures:
+            # The record is purged but the box is not clean. Saying "success"
+            # here is worse than saying nothing: the caller's whole reason for
+            # calling was to make the service stop existing, and it still does.
+            return {
+                "success": False,
+                "error": "PURGE_INCOMPLETE",
+                "deployment_id": deployment.deployment_id,
+                "project": project,
+                "service": service,
+                "server": server,
+                "record_status": "purged",
+                "steps_completed": steps_completed,
+                "failed_steps": failures,
+                "cleanup_info": cleanup_info,
+                "message": (
+                    f"{project}/{service} is marked purged, but {len(failures)} cleanup "
+                    f"step(s) failed on {server} — it may still be serving. Retrying will "
+                    f"not help (the record is already purged); finish these by hand."
+                ),
+            }
 
         return {
             "success": True,
