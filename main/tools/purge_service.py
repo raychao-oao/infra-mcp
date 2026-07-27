@@ -305,15 +305,28 @@ async def purge_service(
             "notes": deployment.notes
         }
 
-        await store.update_service_status(
+        # Use what the update returns. Re-reading with get_service_deployment()
+        # cannot work here: that query excludes PURGED rows, so it returns None
+        # the moment this succeeds — and every purge then died building its own
+        # response, reporting PURGE_FAILED for work that had in fact completed.
+        purged = await store.update_service_status(
             deployment.deployment_id,
             "purged",
             backup_config=backup_config
         )
         steps_completed.append("status_updated_to_purged")
 
-        # Get updated deployment
-        deployment = await store.get_service_deployment(project, service, server)
+        if purged is None:
+            return {
+                "success": False,
+                "error": "PURGE_INCOMPLETE",
+                "message": (
+                    f"Server-side cleanup finished but {deployment.deployment_id} could not "
+                    f"be marked purged. The record still describes a service that is gone."
+                ),
+                "steps_completed": steps_completed,
+            }
+        deployment = purged
 
         return {
             "success": True,
