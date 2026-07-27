@@ -78,6 +78,10 @@ from main.tools.reconcile_ports import (
     reconcile_ports,
     validate_reconcile_ports_input
 )
+from main.tools.check_firewall import (
+    check_firewall,
+    validate_check_firewall_input
+)
 from main.tools.validate_service_security import (
     validate_service_security,
     validate_validate_service_security_input
@@ -736,6 +740,27 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     }
                 },
                 # Security audit tools
+                {
+                    "name": "check_firewall",
+                    "description": (
+                        "Check whether a host actually has a working, persistent packet "
+                        "filter. Verifies a terminal REJECT/DROP or default-deny policy on "
+                        "both IPv4 and IPv6, that persistence packages are really installed "
+                        "rather than in 'rc' state, and that nothing claims to be a firewall "
+                        "while not being one. Does not trust `systemctl is-enabled`, which "
+                        "reports 'enabled' for a removed package's leftover init script."
+                    ),
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "server": {
+                                "type": "string",
+                                **({"enum": INFRA_SERVERS} if INFRA_SERVERS else {}),
+                                "description": "Optional VPS server; all configured servers when omitted"
+                            }
+                        }
+                    }
+                },
                 {
                     "name": "reconcile_ports",
                     "description": (
@@ -1601,6 +1626,15 @@ async def mcp_endpoint(request: JSONRPCRequest):
                 )
 
             # Security audit tools
+            elif tool_name == "check_firewall":
+                is_valid, error_msg = await validate_check_firewall_input(arguments)
+                if not is_valid:
+                    raise InvalidParamsError(error_msg)
+
+                result = await check_firewall(
+                    server=arguments.get("server")
+                )
+
             elif tool_name == "reconcile_ports":
                 is_valid, error_msg = await validate_reconcile_ports_input(arguments)
                 if not is_valid:

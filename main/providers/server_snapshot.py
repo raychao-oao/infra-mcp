@@ -39,6 +39,15 @@ for f in {CADDY_SITES_DIR}/*.caddy; do
   echo '{_MARKER}CADDY '"$f"
   sudo cat "$f" 2>/dev/null
 done
+echo '{_MARKER}IPT4 -'
+sudo iptables -S INPUT 2>/dev/null
+echo '{_MARKER}IPT6 -'
+sudo ip6tables -S INPUT 2>/dev/null
+echo '{_MARKER}PKG -'
+dpkg -l iptables-persistent netfilter-persistent ufw firewalld nftables 2>/dev/null | grep -E '^(ii|rc)' || true
+echo '{_MARKER}UFW -'
+grep -i '^ENABLED' /etc/ufw/ufw.conf 2>/dev/null || true
+command -v ufw >/dev/null 2>&1 && echo 'BINARY=present' || echo 'BINARY=missing'
 for u in {SYSTEMD_DIR}/*.service; do
   [ -f "$u" ] || continue
   echo '{_MARKER}UNIT '"$u"
@@ -75,6 +84,7 @@ class ServerSnapshot:
         caddy_files: Dict[str, str],
         unit_files: Optional[Dict[str, str]] = None,
         env_files: Optional[Dict[str, str]] = None,
+        firewall: Optional[Dict[str, str]] = None,
     ):
         self.server = server
         self.ss_output = ss_output
@@ -83,6 +93,7 @@ class ServerSnapshot:
         # bind-related Environment lines; env files hold only bind-related keys.
         self.unit_files = unit_files or {}
         self.env_files = env_files or {}
+        self.firewall = firewall or {}
 
     @classmethod
     def fetch(cls, server: str, timeout: int = 60) -> "ServerSnapshot":
@@ -102,7 +113,10 @@ class ServerSnapshot:
     @classmethod
     def _parse(cls, server: str, output: str) -> "ServerSnapshot":
         ss_lines: List[str] = []
-        sections: Dict[str, Dict[str, str]] = {"CADDY": {}, "UNIT": {}, "ENV": {}}
+        sections: Dict[str, Dict[str, str]] = {
+            "CADDY": {}, "UNIT": {}, "ENV": {},
+            "IPT4": {}, "IPT6": {}, "PKG": {}, "UFW": {},
+        }
         kind: Optional[str] = None
         path: Optional[str] = None
         buffer: List[str] = []
@@ -134,6 +148,12 @@ class ServerSnapshot:
             sections["CADDY"],
             sections["UNIT"],
             sections["ENV"],
+            firewall={
+                "iptables_v4": sections["IPT4"].get("-", ""),
+                "iptables_v6": sections["IPT6"].get("-", ""),
+                "packages": sections["PKG"].get("-", ""),
+                "ufw": sections["UFW"].get("-", ""),
+            },
         )
 
     # --- listening sockets -------------------------------------------------
