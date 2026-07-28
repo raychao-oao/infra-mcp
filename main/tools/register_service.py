@@ -1,9 +1,15 @@
 """
 register_service MCP Tool Implementation
 
-Unified Directory Structure:
-- /var/www/{project}/          - Static files (actual location)
-- ~/PRJ/{project}/www/         - Symlink to /var/www/{project}/
+This tool ONLY allocates the standard layer: it decides project_root/deploy_root
+by convention (or accepts caller-supplied overrides) and writes
+layer=ServiceLayer.STANDARD. It does not deploy anything and does not describe
+services that already exist elsewhere — for those, use `record_service`
+(nonstandard layer; paths are observations, not decisions).
+
+Unified Directory Structure (standard layer, derived by main.utils.resolve_paths):
+- /var/www/{project}/          - Static files (actual location; deploy_root)
+- ~/PRJ/{project}/             - Project root (project_root)
 - ~/PRJ/{project}/app/         - Backend code (Flask/Node.js)
 
 Port Allocation:
@@ -14,68 +20,16 @@ Port Allocation:
 from datetime import datetime
 from typing import Optional, Dict, Any
 import re
-import json
 
 from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
+from main.models.service_deployment import ServiceLayer
+from main.utils import resolve_paths
 
 
 # Service types that actually serve files from disk. Only these get a
-# static_path by default — see _generate_default_paths.
-STATIC_SERVING_TYPES = {"static", "flask+static"}
-
-
-def _generate_default_paths(project: str, service_type: str) -> Dict[str, Optional[str]]:
-    """
-    Generate default paths based on unified directory structure.
-
-    Only for paths this project's deploy step really creates, and only where the
-    service type implies them. A record is a description of reality; inventing a
-    path is not a harmless default:
-
-    - `static_path` on a pure flask/nodejs/docker service made deploy_service
-      create `/var/www/{project}/` and symlink `~/PRJ/{project}/www` to it, for a
-      service with no static files at all.
-    - `log_path` was defaulted to `/var/log/{project}/`, which nothing creates —
-      so purge_service would offer to delete a directory that never existed, and
-      get_service_info reported it as if it did.
-    - `app_path`/`data_path`/`config_path` under `~/PRJ/{project}/` are only real
-      because deploy_service creates them. A **docker** service is not deployed
-      that way — it comes up from a compose file wherever its author put it.
-      Registering one produced `~/PRJ/{project}/app/` on a host with no `~/PRJ`
-      directory at all.
-
-    Args:
-        project: Project name
-        service_type: Service type
-
-    Returns:
-        Dict with default paths; None means "unknown, do not guess"
-    """
-    paths: Dict[str, Optional[str]] = {
-        "static_path": None,
-        "app_path": None,
-        "data_path": None,
-        "log_path": None,
-        "config_path": None,
-    }
-
-    # Docker services are brought up from a compose file that this server never
-    # placed and cannot locate. Guess nothing; let the caller say where it is.
-    if service_type == "docker":
-        return paths
-
-    if service_type in STATIC_SERVING_TYPES:
-        paths["static_path"] = f"/var/www/{project}/"
-
-    paths["data_path"] = f"~/PRJ/{project}/data/"
-    paths["config_path"] = f"~/PRJ/{project}/config/"
-
-    # Static-only services don't need app_path
-    if service_type != "static":
-        paths["app_path"] = f"~/PRJ/{project}/app/"
-
-    return paths
+# deploy_root by default.
+FILE_SERVING_TYPES = {"static", "flask+static"}
 
 
 async def register_service(
@@ -87,18 +41,17 @@ async def register_service(
     port: Optional[int] = None,
     hostname: Optional[str] = None,
     tunnel_name: Optional[str] = None,
-    app_path: Optional[str] = None,
-    static_path: Optional[str] = None,
-    data_path: Optional[str] = None,
-    log_path: Optional[str] = None,
-    config_path: Optional[str] = None,
+    project_root: Optional[str] = None,
+    deploy_root: Optional[str] = None,
+    path_overrides: Optional[Dict] = None,
+    workspace_url: Optional[str] = None,
     caddy_rules: Optional[Dict] = None,
     environment: Optional[Dict] = None,
     systemd_config: Optional[Dict] = None,
     notes: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Register a service deployment configuration.
+    Register a service deployment configuration (standard layer, allocation only).
 
     Args:
         store: SQLiteStore instance
@@ -109,11 +62,12 @@ async def register_service(
         port: Port number (optional, can be allocated later)
         hostname: Public hostname (optional, e.g., 'app.your-domain.com')
         tunnel_name: Cloudflare tunnel name (optional)
-        app_path: Application code path (e.g., '~/PRJ/PAC/dashboard/flask_app/')
-        static_path: Static files path (e.g., '/var/www/pac/')
-        data_path: Data directory
-        log_path: Log directory
-        config_path: Config files path
+        project_root: Project root path (default: '~/PRJ/{project}/')
+        deploy_root: Static file deploy root (default: '/var/www/{project}/' for
+            file-serving service types; None otherwise)
+        path_overrides: Dict of sub-path overrides keyed by
+            app/static/data/config/log
+        workspace_url: Private workspace repo URL (optional)
         caddy_rules: Caddy routing rules as dict
         environment: Environment variables as dict
         systemd_config: Systemd service configuration as dict
@@ -171,15 +125,11 @@ async def register_service(
             }
         }
 
-    # Generate default paths based on unified directory structure
-    default_paths = _generate_default_paths(project, service_type)
-
-    # Use provided paths or fall back to defaults
-    final_static_path = static_path or default_paths["static_path"]
-    final_app_path = app_path or default_paths["app_path"]
-    final_data_path = data_path or default_paths["data_path"]
-    final_log_path = log_path or default_paths["log_path"]
-    final_config_path = config_path or default_paths["config_path"]
+    # Allocate roots by convention unless the caller overrode them.
+    final_project_root = project_root or f"~/PRJ/{project}/"
+    final_deploy_root = deploy_root or (
+        f"/var/www/{project}/" if service_type in FILE_SERVING_TYPES else None
+    )
 
     # Static services don't need port
     # Port will be allocated during deploy for flask/nodejs/docker/flask+static
@@ -200,16 +150,18 @@ async def register_service(
             port=final_port,
             hostname=hostname,
             tunnel_name=tunnel_name,
-            app_path=final_app_path,
-            static_path=final_static_path,
-            data_path=final_data_path,
-            log_path=final_log_path,
-            config_path=final_config_path,
+            layer=ServiceLayer.STANDARD,
+            project_root=final_project_root,
+            deploy_root=final_deploy_root,
+            path_overrides=path_overrides,
+            workspace_url=workspace_url,
             caddy_rules=caddy_rules,
             environment=environment,
             systemd_config=systemd_config,
             notes=notes
         )
+
+        resolved = resolve_paths(deployment)
 
         return {
             "success": True,
@@ -224,11 +176,11 @@ async def register_service(
                 "port": deployment.port,
                 "hostname": deployment.hostname,
                 "tunnel_name": deployment.tunnel_name,
-                "app_path": deployment.app_path,
-                "static_path": deployment.static_path,
-                "data_path": deployment.data_path,
-                "log_path": deployment.log_path,
-                "config_path": deployment.config_path,
+                "layer": deployment.layer.value,
+                "project_root": deployment.project_root,
+                "deploy_root": deployment.deploy_root,
+                "path_overrides": deployment.path_overrides,
+                "workspace_url": deployment.workspace_url,
                 "caddy_rules": deployment.caddy_rules,
                 "environment": deployment.environment,
                 "systemd_config": deployment.systemd_config
@@ -238,14 +190,7 @@ async def register_service(
             "port_info": "Port will be allocated during deploy" if service_type != "static" and not final_port else (
                 "Static service - no port needed" if service_type == "static" else f"Port {final_port} specified"
             ),
-            "directory_structure": {
-                "static_files": final_static_path,
-                "app_code": final_app_path,
-                "symlink": (
-                    f"~/PRJ/{project}/www/ -> {final_static_path}"
-                    if final_static_path else None
-                ),
-            }
+            "directory_structure": resolved
         }
 
     except Exception as e:
@@ -291,23 +236,46 @@ async def validate_register_service_input(data: Dict[str, Any]) -> tuple[bool, O
             return False, "Field 'port' must be an integer"
 
     # Validate optional string fields
-    string_fields = ["hostname", "tunnel_name", "app_path", "static_path",
-                     "data_path", "log_path", "config_path", "notes"]
+    string_fields = ["hostname", "tunnel_name", "project_root", "deploy_root",
+                     "workspace_url", "notes"]
     for field in string_fields:
         if field in data and data[field] is not None:
             if not isinstance(data[field], str):
                 return False, f"Field '{field}' must be a string"
 
     # Validate that user-supplied paths are project-scoped and safe
-    from main.utils import validate_project_path
+    from main.utils import validate_project_path, validate_safe_string
     project = data.get("project", "")
-    path_fields = ["app_path", "static_path", "data_path", "log_path", "config_path"]
+    path_fields = ["project_root", "deploy_root"]
     for field in path_fields:
         if data.get(field):
             try:
                 validate_project_path(data[field], project, field)
             except ValueError as e:
                 return False, str(e)
+
+    # Validate path_overrides: dict of sub-path key -> project-scoped path
+    if "path_overrides" in data and data["path_overrides"] is not None:
+        overrides = data["path_overrides"]
+        if not isinstance(overrides, dict):
+            return False, "Field 'path_overrides' must be a dict/object"
+        allowed_keys = {"app", "static", "data", "config", "log"}
+        for key, value in overrides.items():
+            if key not in allowed_keys:
+                return False, f"Invalid path_overrides key '{key}': must be one of {sorted(allowed_keys)}"
+            if not isinstance(value, str):
+                return False, f"path_overrides['{key}'] must be a string"
+            try:
+                validate_project_path(value, project, f"path_overrides.{key}")
+            except ValueError as e:
+                return False, str(e)
+
+    # Validate workspace_url
+    if data.get("workspace_url"):
+        try:
+            validate_safe_string(data["workspace_url"], "workspace_url")
+        except ValueError as e:
+            return False, str(e)
 
     # Validate optional dict fields
     dict_fields = ["caddy_rules", "environment", "systemd_config"]

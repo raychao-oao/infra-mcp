@@ -519,7 +519,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
                 },
                 {
                     "name": "register_service",
-                    "description": "Register a service deployment configuration (planning phase - no actual deployment)",
+                    "description": "Allocate a new service deployment (standard layer only: this server owns and derives its paths). Planning phase - no actual deployment. For a service that already exists elsewhere, use record_service instead.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -552,25 +552,21 @@ async def mcp_endpoint(request: JSONRPCRequest):
                                 "type": "string",
                                 "description": "Cloudflare tunnel name (optional)"
                             },
-                            "app_path": {
+                            "project_root": {
                                 "type": "string",
-                                "description": "Application code path (e.g., '~/PRJ/PAC/dashboard/flask_app/')"
+                                "description": "Project root path (default: '~/PRJ/{project}/')"
                             },
-                            "static_path": {
+                            "deploy_root": {
                                 "type": "string",
-                                "description": "Static files path (e.g., '/var/www/pac/')"
+                                "description": "Static file deploy root (default: '/var/www/{project}/' for static/flask+static service types)"
                             },
-                            "data_path": {
-                                "type": "string",
-                                "description": "Data directory path"
+                            "path_overrides": {
+                                "type": "object",
+                                "description": "Sub-path overrides deviating from convention, keyed by app/static/data/config/log"
                             },
-                            "log_path": {
+                            "workspace_url": {
                                 "type": "string",
-                                "description": "Log directory path"
-                            },
-                            "config_path": {
-                                "type": "string",
-                                "description": "Config files path"
+                                "description": "Private workspace repo URL (optional)"
                             },
                             "caddy_rules": {
                                 "type": "object",
@@ -1607,11 +1603,10 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     port=arguments.get("port"),
                     hostname=arguments.get("hostname"),
                     tunnel_name=arguments.get("tunnel_name"),
-                    app_path=arguments.get("app_path"),
-                    static_path=arguments.get("static_path"),
-                    data_path=arguments.get("data_path"),
-                    log_path=arguments.get("log_path"),
-                    config_path=arguments.get("config_path"),
+                    project_root=arguments.get("project_root"),
+                    deploy_root=arguments.get("deploy_root"),
+                    path_overrides=arguments.get("path_overrides"),
+                    workspace_url=arguments.get("workspace_url"),
                     caddy_rules=arguments.get("caddy_rules"),
                     environment=arguments.get("environment"),
                     systemd_config=arguments.get("systemd_config"),
