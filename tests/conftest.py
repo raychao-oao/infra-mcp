@@ -7,4 +7,5 @@ from main.db.sqlite_store import SQLiteStore
 async def store(tmp_path):
     s = SQLiteStore(f"sqlite+aiosqlite:///{tmp_path}/test.db")
     await s.initialize()
-    return s
+    yield s
+    await s.close()
