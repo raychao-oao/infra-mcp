@@ -28,6 +28,18 @@ class ServiceType(str, enum.Enum):
     FLASK_STATIC = "flask+static"  # Flask + static files
 
 
+class ServiceLayer(str, enum.Enum):
+    """Who owns this service's layout.
+
+    STANDARD: this server allocated its resources and deploys it — paths are
+    decisions, derived from project_root/deploy_root by convention.
+    NONSTANDARD: it already exists, built by its own project — paths are
+    observations; nothing here is derived or enforced.
+    """
+    STANDARD = "standard"
+    NONSTANDARD = "nonstandard"
+
+
 class ServiceDeployment(Base):
     """Service deployment record."""
 
@@ -47,12 +59,12 @@ class ServiceDeployment(Base):
     hostname = Column(String, nullable=True)  # References tunnel_registrations
     tunnel_name = Column(String, nullable=True)
 
-    # File paths
-    app_path = Column(String, nullable=True)  # Application code path
-    static_path = Column(String, nullable=True)  # Static files path
-    data_path = Column(String, nullable=True)  # Data directory
-    log_path = Column(String, nullable=True)  # Log directory
-    config_path = Column(String, nullable=True)  # Config files path
+    # Layer and resource roots (see docs: resource model design)
+    layer = Column(Enum(ServiceLayer), nullable=False, default=ServiceLayer.STANDARD, index=True)
+    project_root = Column(String, nullable=True)   # e.g. ~/PRJ/{project}/
+    deploy_root = Column(String, nullable=True)    # e.g. /var/www/{project}/  (file-serving only)
+    workspace_url = Column(String, nullable=True)  # private workspace repo URL; NULL = no source of truth
+    path_overrides = Column(JSON, nullable=True)   # {"data": "~/PRJ/example/instance/"} — deviations from convention
 
     # Configuration (stored as JSON)
     caddy_rules = Column(JSON, nullable=True)  # Caddy routing rules
@@ -86,11 +98,11 @@ class ServiceDeployment(Base):
             "port": self.port,
             "hostname": self.hostname,
             "tunnel_name": self.tunnel_name,
-            "app_path": self.app_path,
-            "static_path": self.static_path,
-            "data_path": self.data_path,
-            "log_path": self.log_path,
-            "config_path": self.config_path,
+            "layer": self.layer.value if self.layer else None,
+            "project_root": self.project_root,
+            "deploy_root": self.deploy_root,
+            "workspace_url": self.workspace_url,
+            "path_overrides": self.path_overrides,
             "caddy_rules": self.caddy_rules,
             "environment": self.environment,
             "systemd_config": self.systemd_config,
