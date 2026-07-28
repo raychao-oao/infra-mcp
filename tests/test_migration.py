@@ -71,3 +71,125 @@ def test_dry_run_changes_nothing(tmp_path):
     db = sqlite3.connect(db_path)
     cols = {c[1] for c in db.execute("PRAGMA table_info(service_deployments)")}
     assert "layer" not in cols
+
+
+def test_drop_refuses_on_unmigrated_db(tmp_path):
+    db_path = tmp_path / "r.db"; make_old_db(db_path)
+    r = run_migration(db_path, "drop")
+    assert r.returncode != 0
+    db = sqlite3.connect(db_path)
+    cols = {c[1] for c in db.execute("PRAGMA table_info(service_deployments)")}
+    # nothing dropped, DB untouched by the refused run
+    assert "app_path" in cols and "layer" not in cols
+
+
+def test_add_recovers_from_partial_alter(tmp_path):
+    # Simulate a crash between the five ALTERs: two of the five new columns
+    # already exist (added by a previous, interrupted run), the rest don't.
+    db_path = tmp_path / "r.db"; make_old_db(db_path)
+    db = sqlite3.connect(db_path)
+    db.execute("ALTER TABLE service_deployments ADD COLUMN layer TEXT")
+    db.execute("ALTER TABLE service_deployments ADD COLUMN project_root TEXT")
+    db.commit(); db.close()
+
+    r = run_migration(db_path, "add")
+    assert r.returncode == 0, r.stderr
+
+    db = sqlite3.connect(db_path)
+    cols = {c[1] for c in db.execute("PRAGMA table_info(service_deployments)")}
+    assert {"layer", "project_root", "deploy_root", "workspace_url", "path_overrides"} <= cols
+    row = db.execute(
+        "SELECT layer, project_root FROM service_deployments WHERE deployment_id='d1'"
+    ).fetchone()
+    assert row == ("STANDARD", "~/PRJ/alpha/")
+
+
+def test_sweep_backfills_null_layer_row(tmp_path):
+    # Simulate a row a still-live copy of the OLD code wrote after phase add
+    # already ran once (e.g. process wasn't yet restarted onto new code):
+    # the new columns exist, but layer was never populated for this row.
+    db_path = tmp_path / "r.db"; make_old_db(db_path)
+    run_migration(db_path, "add")
+    db = sqlite3.connect(db_path)
+    db.execute("UPDATE service_deployments SET layer=NULL WHERE deployment_id='d2'")
+    db.commit(); db.close()
+
+    r = run_migration(db_path, "add")
+    assert r.returncode == 0, r.stderr
+
+    db = sqlite3.connect(db_path)
+    row = db.execute(
+        "SELECT layer FROM service_deployments WHERE deployment_id='d2'"
+    ).fetchone()
+    assert row[0] == "NONSTANDARD"
+
+    # and phase drop is now unblocked again
+    r = run_migration(db_path, "drop")
+    assert r.returncode == 0, r.stderr
+
+
+def test_trailing_slash_value_matches_convention(tmp_path):
+    db_path = tmp_path / "r.db"
+    db = sqlite3.connect(db_path)
+    db.executescript(OLD_SCHEMA)
+    db.execute(
+        "INSERT INTO service_deployments (deployment_id, project, service, server, service_type,"
+        " app_path, data_path, status, deployed_at) VALUES"
+        " ('d4','delta','api','prod','FLASK','~/PRJ/delta/app','~/PRJ/delta/data',"
+        "  'DEPLOYED','2026-01-01T00:00:00')"
+    )
+    db.commit(); db.close()
+
+    r = run_migration(db_path, "add")
+    assert r.returncode == 0, r.stderr
+
+    db = sqlite3.connect(db_path)
+    row = db.execute(
+        "SELECT path_overrides FROM service_deployments WHERE deployment_id='d4'"
+    ).fetchone()
+    assert row[0] is None
+
+
+def test_nonconventional_app_path_becomes_override(tmp_path):
+    # Real-world shape: /home/<user>/PRJ/<project>/<subdir> — no trailing
+    # "app/" segment, and recorded under whatever account deployed it.
+    db_path = tmp_path / "r.db"
+    db = sqlite3.connect(db_path)
+    db.executescript(OLD_SCHEMA)
+    db.execute(
+        "INSERT INTO service_deployments (deployment_id, project, service, server, service_type,"
+        " app_path, status, deployed_at) VALUES"
+        " ('d5','tcm-go','poc','prod','FLASK','/home/testuser/PRJ/tcm-go/poc',"
+        "  'DEPLOYED','2026-01-01T00:00:00')"
+    )
+    db.commit(); db.close()
+
+    r = run_migration(db_path, "add")
+    assert r.returncode == 0, r.stderr
+
+    db = sqlite3.connect(db_path)
+    row = db.execute(
+        "SELECT project_root, path_overrides FROM service_deployments WHERE deployment_id='d5'"
+    ).fetchone()
+    assert row[0] == "~/PRJ/tcm-go/"
+    overrides = json.loads(row[1])
+    assert overrides["app"] == "~/PRJ/tcm-go/poc"
+
+
+def test_project_root_guessed_counter_reported(tmp_path):
+    # No app_path at all → no ~/PRJ/ evidence → fallback used → counted.
+    db_path = tmp_path / "r.db"
+    db = sqlite3.connect(db_path)
+    db.executescript(OLD_SCHEMA)
+    db.execute(
+        "INSERT INTO service_deployments (deployment_id, project, service, server, service_type,"
+        " status, deployed_at) VALUES"
+        " ('d6','zeta','svc','prod','DOCKER','DEPLOYED','2026-01-01T00:00:00')"
+    )
+    db.commit(); db.close()
+
+    r = subprocess.run([sys.executable, "scripts/migrate_resource_model.py",
+                        "--db", str(db_path), "--phase", "add"],
+                        capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert "project_root_guessed=1" in r.stdout
