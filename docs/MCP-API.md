@@ -1,14 +1,14 @@
 # MCP Tools API Reference
 
-**Document version**: v2.0
-**Last updated**: 2026-05-16
+**Document version**: v2.1
+**Last updated**: 2026-07-28
 **Status**: Production
 
 ---
 
 ## Overview
 
-The Infrastructure MCP Server exposes **38 tools** via JSON-RPC 2.0 over HTTP.
+The Infrastructure MCP Server exposes **42 tools** via JSON-RPC 2.0 over HTTP.
 
 **Endpoint**: `POST /mcp`
 **Auth**: `Authorization: Bearer <MCP_API_KEY>` (when `MCP_API_KEY` env var is set)
@@ -18,7 +18,7 @@ The Infrastructure MCP Server exposes **38 tools** via JSON-RPC 2.0 over HTTP.
 | Category | Tools | Count |
 |----------|-------|-------|
 | [Port Management](#port-management) | allocate_port, release_port, reconcile_ports, check_listening_ports | 4 |
-| [Service Management](#service-management) | register_service, update_service, deploy_service, stop_service, purge_service, upgrade_service, get_service_info, get_service_logs, check_service_health, validate_service_security, audit_all_services, check_firewall, get_caddy_config, restart_service | 14 |
+| [Service Management](#service-management) | register_service, record_service, update_service, deploy_service, stop_service, purge_service, upgrade_service, get_service_info, get_service_logs, check_service_health, validate_service_security, audit_all_services, check_firewall, get_caddy_config, restart_service | 15 |
 | [Tunnel Registry](#tunnel-registry) | register_main_tunnel, list_main_tunnels, get_tunnel_config | 3 |
 | [Cloudflare Tunnel API](#cloudflare-tunnel-api) | create_cloudflare_tunnel, delete_cloudflare_tunnel, list_cloudflare_tunnels, get_tunnel_token, list_public_hostnames, add_public_hostname, remove_public_hostname | 7 |
 | [DNS Management](#dns-management) | create_dns_record, update_dns_record, delete_dns_record, list_dns_records | 4 |
@@ -82,6 +82,19 @@ Check listening ports on a VPS and grade each by reachability. Addresses are par
 
 ### `register_service`
 
+**Allocation vs recording.** `register_service` and `record_service` both create a
+`service_deployments` row, but they answer different questions. `register_service`
+is for services *this server allocates and deploys* — its `layer` is always
+`standard`, and `project_root`/`deploy_root` are decisions: pick a convention (or
+override it) and the deploy step builds toward it. `record_service` is for
+services that already exist, built and deployed by their own project — its
+`layer` is always `nonstandard`, and every path is an observation the caller
+reports; nothing is defaulted or derived. Registering a service that isn't
+this server's to deploy produces a record describing a directory nobody made;
+recording a service this server does own throws away the convention that lets
+`deploy_service` and `get_service_info` derive its sub-paths automatically. Use
+`update_service` with `layer=` to correct a mis-classification after the fact.
+
 Register a service deployment configuration in the database. Does **not** perform actual deployment — use `deploy_service` to deploy.
 
 | Parameter | Type | Required | Description |
@@ -93,17 +106,75 @@ Register a service deployment configuration in the database. Does **not** perfor
 | `port` | integer | | Port number (can be allocated later) |
 | `hostname` | string | | Public hostname (e.g., `app.your-domain.com`) |
 | `tunnel_name` | string | | Cloudflare tunnel name |
-| `app_path` | string | | Application code path (e.g., `~/PRJ/PAC/app/`) |
-| `static_path` | string | | Static files path (e.g., `/var/www/pac/`) |
-| `data_path` | string | | Data directory path |
-| `log_path` | string | | Log directory path |
-| `config_path` | string | | Config files path |
+| `project_root` | string | | Project root (default: `~/PRJ/{project}/`) |
+| `deploy_root` | string | | Static file deploy root (default: `/var/www/{project}/` for `static`/`flask+static`; `None` otherwise) |
+| `path_overrides` | object | | Sub-path deviations from convention, keyed by `app`/`static`/`data`/`config`/`log` |
+| `workspace_url` | string | | Private workspace repo URL (source of truth) |
 | `caddy_rules` | object | | Caddy routing rules as JSON |
 | `environment` | object | | Environment variables as JSON |
 | `systemd_config` | object | | Systemd service config as JSON |
 | `notes` | string | | Optional notes |
 
-Paths are only defaulted where the service type implies them and the deploy step actually creates them. A `docker` service gets none — it comes up from a compose file wherever its author put it, and guessing produces a record that describes a directory nobody made.
+`project_root` and `deploy_root` are the only two roots stored; concrete sub-paths
+(`app/`, `data/`, `config/`, log directory, static files) are derived from them by
+convention at read time (`resolve_paths`), not stored individually. Only
+file-serving service types (`static`, `flask+static`) get a `deploy_root`
+default — a `docker` service gets none, since it comes up from a compose file
+wherever its author put it, and guessing produces a record that describes a
+directory nobody made. `project_root`/`deploy_root`/`path_overrides` must be
+scoped under `/var/www/{project}`, `/var/log/{project}`, or `~/PRJ/{project}`.
+
+---
+
+### `record_service`
+
+Record an already-existing service — one this server did not allocate and does
+not deploy — as a **nonstandard**-layer observation. No default is ever applied:
+omit a path and it stays `None`, because there is no convention to fall back on
+for something this server didn't build. `deploy_root` is not a parameter at all;
+nonstandard services keep whatever static-file location they have via
+`path_overrides["static"]` if one needs recording. Purging a nonstandard record
+never deletes directories — only standard-layer paths are ones this server is
+willing to remove.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project` | string | ✅ | Project name |
+| `service` | string | ✅ | Service name |
+| `server` | string | ✅ | VPS server name |
+| `service_type` | string | ✅ | `flask`, `nodejs`, `static`, `docker`, `flask+static` |
+| `port` | integer | | Port observed in use |
+| `hostname` | string | | Public hostname observed |
+| `tunnel_name` | string | | Cloudflare tunnel name observed |
+| `project_root` | string | | Observed project root (no default; `None` if not observed) |
+| `path_overrides` | object | | Observed sub-path locations, keyed by `app`/`static`/`data`/`config`/`log` |
+| `workspace_url` | string | | Observed source-of-truth repo URL |
+| `caddy_rules` | object | | Observed Caddy routing rules as JSON |
+| `environment` | object | | Observed environment variables as JSON |
+| `systemd_config` | object | | Observed systemd service config as JSON |
+| `notes` | string | | Optional notes |
+
+Paths pass through `validate_recorded_path` rather than `validate_project_path`:
+they must still be absolute (or `~/`) and free of traversal, but they are not
+required to live under `/var/www/{project}` or `~/PRJ/{project}` — an
+already-existing service can live anywhere.
+
+Example — an existing Docker stack this server didn't deploy, whose Caddy site
+already routes a hostname:
+
+```json
+{
+  "project": "rss-stack",
+  "service": "caddy",
+  "server": "prod",
+  "service_type": "docker",
+  "hostname": "rss.your-domain.com",
+  "project_root": "~/stacks/rss-stack/",
+  "path_overrides": {"data": "/srv/rss-stack/data/"},
+  "workspace_url": "https://git.example.com/team/rss-stack",
+  "notes": "Deployed by its own docker-compose; infra-mcp only observes it"
+}
+```
 
 ---
 
@@ -119,14 +190,25 @@ Correct a deployment record. **Database only** — nothing is restarted, redeplo
 | `port` | integer | | Port the service listens on |
 | `hostname` | string | | Public hostname |
 | `tunnel_name` | string | | Cloudflare tunnel name |
-| `app_path` `static_path` `data_path` `log_path` `config_path` | string | | Paths |
+| `layer` | string | | `standard` or `nonstandard` — corrects a migration mis-classification; changes what `project_root`/`deploy_root` mean (decision vs. observation) and which validator new paths go through |
+| `project_root` `deploy_root` | string | | Roots (validated against the record's post-update `layer`) |
+| `path_overrides` | object | | Sub-path deviations, keyed by `app`/`static`/`data`/`config`/`log` |
+| `workspace_url` | string | | Source-of-truth repo URL |
 | `caddy_rules` `environment` `systemd_config` | object | | JSON config |
 | `notes` | string | | Replaces the existing notes — it does not append |
 | `status` | string | | `registered` / `deployed` / `stopped` / `archived` / `purged`; sets the matching timestamp |
-| `clear` | array | | Field names to set back to NULL |
+| `clear` | array | | Field names to set back to NULL (`layer` cannot be cleared — it is `NOT NULL`) |
 | `force` | boolean | | Allow a hostname or port already held by another live deployment |
 
 Omitting a field leaves it unchanged, so `clear` is the only way to blank one — `null` cannot express the difference between "leave this alone" and "erase this".
+
+Promoting a record to `layer=standard` (or leaving it standard) re-validates the
+*effective* post-update `project_root`/`deploy_root`/`path_overrides` — including
+values already stored, not just ones this call is setting — against
+`validate_project_path`, since a bare `layer=standard` flip changes what a
+previously-observed root means without necessarily touching it. Staying or moving
+to `nonstandard` only validates values this call is actually setting, against the
+looser `validate_recorded_path`.
 
 Changing `hostname` or `port` to a value another non-purged deployment already holds is refused unless `force` is set. Pointing a record at another service's resources is what makes a later `purge_service` dangerous.
 
@@ -209,6 +291,14 @@ Get detailed information about a deployed service: connection URL, directory str
 | `project` | string | ✅ | Project name |
 | `service` | string | ✅ | Service name |
 | `server` | string | ✅ | VPS server name |
+
+The response includes `layer` (`standard`/`nonstandard`), the stored
+`project_root`/`deploy_root`, and `workspace_url`. `directories` (`static_files`,
+`app_code`, `data`, `logs`, `config`) is always **derived** via `resolve_paths` —
+never read back from stored per-directory fields, since those no longer exist.
+If `workspace_url` is `None`, the response adds
+`workspace_url_warning: "no source of truth recorded"` — a missing pointer to
+this deployment's source of truth is treated as a warning, not a neutral absence.
 
 ---
 
@@ -645,6 +735,13 @@ List all infrastructure resource allocations with optional filtering.
 ---
 
 ## Changelog
+
+### v2.1 (2026-07-28)
+- Resource model: `register_service` now only allocates the standard layer (`project_root`/`deploy_root`/`path_overrides` replace the old five flat path parameters)
+- Added `record_service` for recording already-existing (nonstandard-layer) services — zero path defaults
+- `update_service` gained `layer`/`project_root`/`deploy_root`/`workspace_url`/`path_overrides`
+- `get_service_info` now derives `directories` via `resolve_paths` and surfaces `layer`/roots/`workspace_url` (+ `workspace_url_warning`)
+- Tool count 41 → 42
 
 ### v2.0 (2026-05-16)
 - Complete rewrite based on actual production code

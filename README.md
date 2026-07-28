@@ -12,12 +12,12 @@ Think of it as the resource scheduler layer between your AI agent and your infra
 
 ## Tools
 
-41 tools, grouped by what they manage:
+42 tools, grouped by what they manage:
 
 | Category | Tools |
 |----------|-------|
 | **Ports** | `allocate_port` `release_port` `reconcile_ports` `check_listening_ports` |
-| **Services** | `register_service` `update_service` `deploy_service` `restart_service` `stop_service` `purge_service` `upgrade_service` `get_service_info` `get_service_logs` `check_service_health` `get_caddy_config` |
+| **Services** | `register_service` `record_service` `update_service` `deploy_service` `restart_service` `stop_service` `purge_service` `upgrade_service` `get_service_info` `get_service_logs` `check_service_health` `get_caddy_config` |
 | **Security** | `audit_all_services` `validate_service_security` `check_firewall` |
 | **Tunnels** | `register_main_tunnel` `list_main_tunnels` `create_cloudflare_tunnel` `delete_cloudflare_tunnel` `list_cloudflare_tunnels` `get_tunnel_config` `get_tunnel_token` `list_public_hostnames` `add_public_hostname` `remove_public_hostname` |
 | **DNS** | `create_dns_record` `update_dns_record` `delete_dns_record` `list_dns_records` |
