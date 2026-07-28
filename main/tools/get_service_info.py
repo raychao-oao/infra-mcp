@@ -130,7 +130,7 @@ async def get_service_info(
         "service_type": service_type,
         "status": status,
         "live_status": live_status,
-        "layer": deployment.layer.value,
+        "layer": deployment.layer.value if deployment.layer is not None else None,
         "project_root": deployment.project_root,
         "deploy_root": deployment.deploy_root,
         "workspace_url": deployment.workspace_url,

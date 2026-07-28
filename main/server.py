@@ -297,10 +297,16 @@ async def health_check():
     """Detailed health check."""
     checks = {}
 
-    # Check database connection
+    # Check database connection. list_port_allocations() alone does not
+    # catch schema drift in the service_deployments table (e.g. mid-migration
+    # columns added by ALTER but not yet backfilled, or a rename): that query
+    # never touches it. Auto-deploy's rollback greps this endpoint for
+    # "healthy", so a DB that can list ports but throws "no such column" on
+    # every deployment query must not be reported healthy.
     if store:
         try:
             await store.list_port_allocations()
+            await store.list_service_deployments()
             checks["database"] = "ok"
         except Exception:
             checks["database"] = "error"

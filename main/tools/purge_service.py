@@ -11,6 +11,7 @@ from main.tools.release_port import release_port
 from main.utils import get_service_name, resolve_paths, validate_project_path
 
 NONSTANDARD_DIRS_NOTE = "directories retained: non-standard layer is not managed by this server"
+SHARED_LOG_DIR_NOTE = "log directory retained: shared with other services of this project"
 
 
 def _dirs_to_remove(
@@ -19,6 +20,7 @@ def _dirs_to_remove(
     remove_static: bool = False,
     remove_app: bool = False,
     remove_logs: bool = False,
+    log_dir_has_siblings: bool = False,
 ) -> List[Dict[str, str]]:
     """
     Decide which concrete directories a purge should delete.
@@ -28,18 +30,46 @@ def _dirs_to_remove(
     purge_service does not own their lifecycle. Only STANDARD-layer
     directories — ones this server derived from project_root/deploy_root — are
     ever candidates for removal.
+
+    The derived log directory (/var/log/{project}/) is shared by every
+    service of the same project — it is not per-service like app/static/data.
+    Deleting it while another (non-purged) service of the project still
+    exists would remove that sibling's logs too, so it is only removable
+    when log_dir_has_siblings is False. An explicitly recorded
+    path_overrides["log"] is service-specific (someone pointed this one
+    service somewhere else on purpose) and is always removable regardless of
+    siblings.
     """
     if deployment.layer != ServiceLayer.STANDARD:
         return []
 
     paths = resolve_paths(deployment)
+    log_is_override = bool((deployment.path_overrides or {}).get("log"))
+    log_removable = remove_logs and (log_is_override or not log_dir_has_siblings)
     wanted = (
         ("app_path", remove_app, paths["app"]),
         ("static_path", remove_static, paths["static"]),
         ("data_path", remove_data, paths["data"]),
-        ("log_path", remove_logs, paths["log"]),
+        ("log_path", log_removable, paths["log"]),
     )
     return [{"label": label, "path": path} for label, requested, path in wanted if requested and path]
+
+
+async def _log_dir_has_siblings(store: SQLiteStore, deployment) -> bool:
+    """True if another non-purged deployment of the same project on the same
+    server exists. The convention-derived log directory is shared by every
+    service of a project, so it must not be deleted while a sibling might
+    still be writing to it."""
+    others = await store.list_service_deployments()
+    for other in others:
+        if other.deployment_id == deployment.deployment_id:
+            continue
+        if other.project != deployment.project or other.server != deployment.server:
+            continue
+        if other.status == DeploymentStatus.PURGED:
+            continue
+        return True
+    return False
 
 
 async def purge_service(
@@ -137,16 +167,28 @@ async def purge_service(
 
     svc_name = get_service_name(project, service, deployment.systemd_config)
     paths = resolve_paths(deployment)
+    log_dir_has_siblings = (
+        await _log_dir_has_siblings(store, deployment) if remove_logs else False
+    )
     dirs_to_remove = _dirs_to_remove(
         deployment,
         remove_data=remove_data,
         remove_static=remove_static_files,
         remove_app=remove_app_files,
         remove_logs=remove_logs,
+        log_dir_has_siblings=log_dir_has_siblings,
     )
     any_dir_requested = remove_app_files or remove_static_files or remove_data or remove_logs
     nonstandard_dirs_blocked = (
         any_dir_requested and deployment.layer != ServiceLayer.STANDARD
+    )
+    log_is_override = bool((deployment.path_overrides or {}).get("log"))
+    log_dir_retained_for_siblings = (
+        remove_logs
+        and deployment.layer == ServiceLayer.STANDARD
+        and paths["log"]
+        and log_dir_has_siblings
+        and not log_is_override
     )
 
     # Locate the real unit and site files rather than deriving their names.
@@ -175,6 +217,8 @@ async def purge_service(
     }
     if nonstandard_dirs_blocked:
         plan["directories_note"] = NONSTANDARD_DIRS_NOTE
+    if log_dir_retained_for_siblings:
+        plan["log_dir_note"] = SHARED_LOG_DIR_NOTE
 
     if dry_run:
         return {
@@ -331,6 +375,8 @@ async def purge_service(
 
         if nonstandard_dirs_blocked:
             cleanup_info["directories_note"] = NONSTANDARD_DIRS_NOTE
+        if log_dir_retained_for_siblings:
+            cleanup_info["log_dir_note"] = SHARED_LOG_DIR_NOTE
 
         # Step 8: Backup configuration and update status to purged
         backup_config = {
