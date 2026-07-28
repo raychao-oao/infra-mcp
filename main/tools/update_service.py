@@ -187,15 +187,27 @@ async def update_service(
     if target_layer == ServiceLayer.STANDARD:
         # Promoting to (or staying) standard means project_root/deploy_root/
         # path_overrides are decisions this server derives paths from — they
-        # must be project-scoped. Validate the *effective* post-update value
-        # (this call's, or else what is already stored), not just values this
-        # call happens to be setting: a bare layer="standard" flip with no
-        # path arguments still changes what the stored NONSTANDARD-observed
-        # roots mean, and deploy_service only guards on layer, not on
-        # whether the roots were ever checked against this validator.
-        effective_project_root = project_root if project_root is not None else deployment.project_root
-        effective_deploy_root = deploy_root if deploy_root is not None else deployment.deploy_root
-        effective_overrides = path_overrides if path_overrides is not None else (deployment.path_overrides or {})
+        # must be project-scoped. Validate the *effective* post-update value:
+        # this call's value if given; else NULL if the field is being
+        # cleared; else what is already stored. A bare layer="standard" flip
+        # with no path arguments still changes what the stored
+        # NONSTANDARD-observed roots mean, and deploy_service only guards on
+        # layer, not on whether the roots were ever checked against this
+        # validator — so the stored value must be checked too, unless the
+        # call is discarding it via `clear` (a NULL root needs no validation:
+        # resolve_paths() derives nothing from a root that isn't there).
+        clear_fields = clear or []
+
+        def _effective(new_value, stored_value, field_name):
+            if new_value is not None:
+                return new_value
+            if field_name in clear_fields:
+                return None
+            return stored_value
+
+        effective_project_root = _effective(project_root, deployment.project_root, "project_root")
+        effective_deploy_root = _effective(deploy_root, deployment.deploy_root, "deploy_root")
+        effective_overrides = _effective(path_overrides, deployment.path_overrides, "path_overrides") or {}
 
         for field, value in (("project_root", effective_project_root), ("deploy_root", effective_deploy_root)):
             if value is None:

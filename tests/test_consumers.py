@@ -61,6 +61,22 @@ async def test_update_layer_to_standard_succeeds_with_compliant_root(store):
 
 
 @pytest.mark.asyncio
+async def test_update_layer_to_standard_with_clear_discards_bad_root(store):
+    # Promoting to standard while discarding the offending root via `clear`
+    # must succeed: a NULL effective project_root needs no validation, since
+    # resolve_paths() derives nothing from a root that isn't there.
+    await record_service(store, "weird-project", "app", "prod", "flask",
+                          project_root="/opt/weird/app/")
+    r = await update_service(store, "weird-project", "app", "prod",
+                              layer="standard", clear=["project_root"])
+    assert r["success"]
+
+    info = await get_service_info(store, "weird-project", "app", "prod")
+    assert info["layer"] == "standard"
+    assert info["project_root"] is None
+
+
+@pytest.mark.asyncio
 async def test_update_layer_field_corrects_misclassification(store):
     # register_service allocates STANDARD; correcting to nonstandard is
     # exactly the migration-mis-classification fix this field exists for.
