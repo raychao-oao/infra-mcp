@@ -277,8 +277,15 @@ Change a service's type (e.g., `static` → `flask+static`). Used when a static 
 | `service` | string | ✅ | Service name |
 | `server` | string | ✅ | VPS server name |
 | `new_service_type` | string | ✅ | `flask`, `nodejs`, `flask+static` |
-| `app_path` | string | | App path (default: `~/PRJ/{project}/app/`) |
+| `app_path` | string | | Explicit app path override; not defaulted. Stored as `path_overrides["app"]`, not a column |
 | `notes` | string | | Optional notes |
+
+An omitted `app_path` is not defaulted — it is derived at read time via
+`resolve_paths()` from `project_root`, which only derives an app directory for
+`layer=standard` records (once `service_type` stops being `static`);
+`layer=nonstandard` records get `None`. A given `app_path` is validated with
+`validate_project_path` for `standard` records or `validate_recorded_path` for
+`nonstandard` ones, then stored as a `path_overrides["app"]` deviation.
 
 ---
 
