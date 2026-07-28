@@ -5,7 +5,7 @@ list_resources MCP Tool Implementation
 from typing import Optional, Dict, Any, List
 from main.db.sqlite_store import SQLiteStore
 from main.config import INFRA_DEFAULT_SERVER
-from main.utils import get_service_name
+from main.utils import get_service_name, resolve_paths
 from main.models.port_allocation import AllocationStatus
 from main.models.main_tunnel import MainTunnelStatus
 from main.models.service_deployment import DeploymentStatus
@@ -217,10 +217,11 @@ async def _fetch_deployments(
         if dep.port:
             connection["port"] = dep.port
 
-        # Build directory structure summary
+        # Build directory structure summary — derived from roots, not stored.
+        dep_paths = resolve_paths(dep)
         directories = {
-            "static": dep.static_path,
-            "app": dep.app_path if service_type != "static" else None,
+            "static": dep_paths["static"],
+            "app": dep_paths["app"] if service_type != "static" else None,
         }
 
         deployment_info = {

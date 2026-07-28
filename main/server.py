@@ -782,11 +782,22 @@ async def mcp_endpoint(request: JSONRPCRequest):
                             "port": {"type": "integer", "description": "Port the service listens on"},
                             "hostname": {"type": "string", "description": "Public hostname"},
                             "tunnel_name": {"type": "string", "description": "Cloudflare tunnel name"},
-                            "app_path": {"type": "string", "description": "Application code path"},
-                            "static_path": {"type": "string", "description": "Static files path"},
-                            "data_path": {"type": "string", "description": "Data directory"},
-                            "log_path": {"type": "string", "description": "Log directory"},
-                            "config_path": {"type": "string", "description": "Config files path"},
+                            "layer": {
+                                "type": "string",
+                                "enum": ["standard", "nonstandard"],
+                                "description": (
+                                    "Correct a migration mis-classification: standard means this "
+                                    "server allocated project_root/deploy_root by convention; "
+                                    "nonstandard means they are observations of an existing layout."
+                                )
+                            },
+                            "project_root": {"type": "string", "description": "Project root path"},
+                            "deploy_root": {"type": "string", "description": "Static file deploy root (file-serving services only)"},
+                            "workspace_url": {"type": "string", "description": "Source-of-truth workspace repo URL"},
+                            "path_overrides": {
+                                "type": "object",
+                                "description": "Sub-path deviations from convention, keyed by app/static/data/config/log"
+                            },
                             "caddy_rules": {"type": "object", "description": "Caddy routing rules"},
                             "environment": {"type": "object", "description": "Environment variables"},
                             "systemd_config": {"type": "object", "description": "systemd service configuration"},
@@ -800,7 +811,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
                                 "type": "array",
                                 "items": {"type": "string"},
                                 "description": (
-                                    "Field names to set back to NULL, e.g. a static_path that "
+                                    "Field names to set back to NULL, e.g. a deploy_root that "
                                     "nothing serves. Omitting a field leaves it unchanged."
                                 )
                             },
@@ -1765,11 +1776,11 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     port=arguments.get("port"),
                     hostname=arguments.get("hostname"),
                     tunnel_name=arguments.get("tunnel_name"),
-                    app_path=arguments.get("app_path"),
-                    static_path=arguments.get("static_path"),
-                    data_path=arguments.get("data_path"),
-                    log_path=arguments.get("log_path"),
-                    config_path=arguments.get("config_path"),
+                    layer=arguments.get("layer"),
+                    project_root=arguments.get("project_root"),
+                    deploy_root=arguments.get("deploy_root"),
+                    workspace_url=arguments.get("workspace_url"),
+                    path_overrides=arguments.get("path_overrides"),
                     caddy_rules=arguments.get("caddy_rules"),
                     environment=arguments.get("environment"),
                     systemd_config=arguments.get("systemd_config"),

@@ -11,7 +11,7 @@ Validate service security configuration including:
 import re
 
 from main.config import INFRA_SERVERS
-from main.utils import get_service_name, q
+from main.utils import get_service_name, q, resolve_paths
 from typing import Optional, Dict, Any, List
 
 from main.db.sqlite_store import SQLiteStore
@@ -95,8 +95,9 @@ async def validate_service_security(
     svc_name = get_service_name(project, service, deployment.systemd_config)
 
     # Check 1: Caddy configuration
+    static_path = resolve_paths(deployment)["static"]
     caddy_files, located_by = snapshot.locate_caddy_configs(
-        svc_name, deployment.hostname, port, deployment.static_path
+        svc_name, deployment.hostname, port, static_path
     )
     caddy_check = await _check_caddy_config(
         server, snapshot, caddy_files, located_by, project, service, auto_fix

@@ -6,7 +6,9 @@ Handles service type upgrades, primarily:
 
 When upgrading, this tool:
 1. Updates service_type in database
-2. Sets app_path if not already set
+2. Optionally records an app_path override (STANDARD layer derives the app
+   directory from project_root by convention once service_type changes;
+   an explicit app_path is stored as a path_overrides["app"] deviation)
 3. Port will be allocated during deploy (if not already allocated)
 """
 
@@ -14,6 +16,8 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 
 from main.db.sqlite_store import SQLiteStore
+from main.models.service_deployment import ServiceLayer
+from main.utils import resolve_paths, validate_project_path, validate_recorded_path
 
 
 # Valid upgrade paths
@@ -85,18 +89,33 @@ async def upgrade_service(
             "message": f"Cannot upgrade from '{current_type}' to '{new_service_type}'. Allowed: {allowed_upgrades or 'none'}"
         }
 
-    # Determine app_path
-    final_app_path = app_path or deployment.app_path or f"~/PRJ/{project}/app/"
+    # An explicit app_path is a deviation from convention — store it as a
+    # path_overrides["app"] entry rather than a column that no longer exists.
+    # Without one, resolve_paths() derives the app directory from
+    # project_root once service_type stops being "static".
+    path_overrides = None
+    if app_path:
+        try:
+            if deployment.layer == ServiceLayer.STANDARD:
+                validate_project_path(app_path, project, "app_path")
+            else:
+                validate_recorded_path(app_path, "app_path")
+        except ValueError as e:
+            return {"success": False, "error": "INVALID_PATH", "message": str(e)}
+        path_overrides = dict(deployment.path_overrides or {})
+        path_overrides["app"] = app_path
 
     # Update the deployment
     try:
-        # Update service type and app_path
-        updated = await store.update_service_deployment(
+        update_kwargs = dict(
             deployment_id=deployment.deployment_id,
             service_type=new_service_type,
-            app_path=final_app_path,
             notes=f"Upgraded from {current_type} to {new_service_type}. {notes or ''}"
         )
+        if path_overrides is not None:
+            update_kwargs["path_overrides"] = path_overrides
+
+        updated = await store.update_service_deployment(**update_kwargs)
 
         if not updated:
             return {
@@ -104,6 +123,8 @@ async def upgrade_service(
                 "error": "UPDATE_FAILED",
                 "message": "Failed to update service deployment"
             }
+
+        final_app_path = resolve_paths(updated)["app"]
 
         return {
             "success": True,
@@ -118,7 +139,8 @@ async def upgrade_service(
             "app_path": final_app_path,
             "port_info": "Port will be allocated during next deploy" if not deployment.port else f"Port {deployment.port} already allocated",
             "next_steps": [
-                f"Upload backend code to {final_app_path}",
+                f"Upload backend code to {final_app_path}" if final_app_path
+                else "No app_path could be derived — set one with update_service before deploying",
                 "Run deploy_service to deploy the updated service",
             ],
             "message": f"Service {project}/{service} upgraded from {current_type} to {new_service_type}"

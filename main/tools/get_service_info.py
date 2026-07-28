@@ -14,7 +14,7 @@ from typing import Optional, Dict, Any
 
 from main.db.sqlite_store import SQLiteStore
 from main.providers.ssh_provider import run_command
-from main.utils import get_service_name, q
+from main.utils import get_service_name, q, resolve_paths
 
 
 async def get_service_info(
@@ -58,18 +58,21 @@ async def get_service_info(
         connection["port"] = deployment.port
         connection["internal_url"] = f"http://localhost:{deployment.port}"
 
-    # Build directory structure
+    # Build directory structure — derived, not stored. resolve_paths() is the
+    # sole place that turns project_root/deploy_root/path_overrides into
+    # concrete sub-paths.
+    paths = resolve_paths(deployment)
     directories = {
-        "static_files": deployment.static_path,
-        "symlink": f"~/PRJ/{project}/www/ -> {deployment.static_path}" if deployment.static_path else None,
+        "static_files": paths["static"],
+        "symlink": f"~/PRJ/{project}/www/ -> {paths['static']}" if paths["static"] else None,
     }
 
     if service_type != "static":
-        directories["app_code"] = deployment.app_path
+        directories["app_code"] = paths["app"]
 
-    directories["data"] = deployment.data_path
-    directories["logs"] = deployment.log_path
-    directories["config"] = deployment.config_path
+    directories["data"] = paths["data"]
+    directories["logs"] = paths["log"]
+    directories["config"] = paths["config"]
 
     # Resolve actual service name
     svc_name = get_service_name(project, service, deployment.systemd_config)
@@ -118,7 +121,7 @@ async def get_service_info(
     # Build environment info
     environment = deployment.environment if deployment.environment else {}
 
-    return {
+    result = {
         "success": True,
         "deployment_id": deployment.deployment_id,
         "project": project,
@@ -127,6 +130,10 @@ async def get_service_info(
         "service_type": service_type,
         "status": status,
         "live_status": live_status,
+        "layer": deployment.layer.value,
+        "project_root": deployment.project_root,
+        "deploy_root": deployment.deploy_root,
+        "workspace_url": deployment.workspace_url,
         "connection": connection,
         "directories": directories,
         "caddy": caddy,
@@ -140,6 +147,13 @@ async def get_service_info(
         "notes": deployment.notes,
         "message": f"Service info retrieved for {project}/{service} on {server}"
     }
+
+    # workspace_url is the source-of-truth pointer for this deployment; NULL
+    # is a warning, not a neutral absence (resource model spec §5).
+    if deployment.workspace_url is None:
+        result["workspace_url_warning"] = "no source of truth recorded"
+
+    return result
 
 
 async def validate_get_service_info_input(data: Dict[str, Any]) -> tuple[bool, Optional[str]]:

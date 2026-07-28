@@ -13,7 +13,7 @@ from .base import ResourceStore
 from main.config import INFRA_DEFAULT_SERVER
 from main.models.port_allocation import Base as PortBase, PortAllocation, AllocationStatus
 from main.models.main_tunnel import Base as MainTunnelBase, MainTunnel, MainTunnelStatus
-from main.models.service_deployment import Base as ServiceBase, ServiceDeployment, DeploymentStatus, ServiceType
+from main.models.service_deployment import Base as ServiceBase, ServiceDeployment, DeploymentStatus, ServiceType, ServiceLayer
 
 
 class SQLiteStore(ResourceStore):
@@ -367,11 +367,11 @@ class SQLiteStore(ResourceStore):
         port: Optional[int] = None,
         hostname: Optional[str] = None,
         tunnel_name: Optional[str] = None,
-        app_path: Optional[str] = None,
-        static_path: Optional[str] = None,
-        data_path: Optional[str] = None,
-        log_path: Optional[str] = None,
-        config_path: Optional[str] = None,
+        layer: Optional[str] = None,
+        project_root: Optional[str] = None,
+        deploy_root: Optional[str] = None,
+        workspace_url: Optional[str] = None,
+        path_overrides: Optional[dict] = None,
         caddy_rules: Optional[dict] = None,
         environment: Optional[dict] = None,
         systemd_config: Optional[dict] = None,
@@ -386,10 +386,10 @@ class SQLiteStore(ResourceStore):
         - Upgrading service type (e.g., static -> flask+static)
         - Updating paths and configuration
 
-        `clear` names fields to set back to NULL. Passing e.g. static_path=None
+        `clear` names fields to set back to NULL. Passing e.g. deploy_root=None
         cannot express that: None is also what "leave this alone" looks like, and
         the named parameter swallows it before **kwargs ever sees it. Clearing a
-        wrong path matters — a static_path nothing serves still makes deploy
+        wrong root matters — a deploy_root nothing serves still makes deploy
         create /var/www/{project}/ and a symlink to it.
         """
         async with self.SessionLocal() as session:
@@ -410,16 +410,16 @@ class SQLiteStore(ResourceStore):
                     deployment.hostname = hostname
                 if tunnel_name is not None:
                     deployment.tunnel_name = tunnel_name
-                if app_path is not None:
-                    deployment.app_path = app_path
-                if static_path is not None:
-                    deployment.static_path = static_path
-                if data_path is not None:
-                    deployment.data_path = data_path
-                if log_path is not None:
-                    deployment.log_path = log_path
-                if config_path is not None:
-                    deployment.config_path = config_path
+                if layer is not None:
+                    deployment.layer = ServiceLayer(layer)
+                if project_root is not None:
+                    deployment.project_root = project_root
+                if deploy_root is not None:
+                    deployment.deploy_root = deploy_root
+                if workspace_url is not None:
+                    deployment.workspace_url = workspace_url
+                if path_overrides is not None:
+                    deployment.path_overrides = path_overrides
                 if caddy_rules is not None:
                     deployment.caddy_rules = caddy_rules
                 if environment is not None:

@@ -17,29 +17,38 @@ from typing import Optional, Dict, Any, List
 
 from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
-from main.models.service_deployment import DeploymentStatus
-from main.utils import validate_project_path
+from main.models.service_deployment import DeploymentStatus, ServiceLayer
+from main.utils import validate_project_path, validate_recorded_path, validate_safe_string
 
 # Fields the caller may set, and the subset that may be cleared back to NULL.
 # service_type is deliberately absent: changing it without regenerating the
 # Caddy config would leave the record and the box disagreeing — that is what
 # upgrade_service is for.
+#
+# layer is updatable but not clearable: it is NOT NULL on the model (default
+# STANDARD), and it is how a migration mis-classification gets corrected
+# after the fact — there is no "unset" state for it.
 UPDATABLE_FIELDS = [
-    "port", "hostname", "tunnel_name",
-    "app_path", "static_path", "data_path", "log_path", "config_path",
+    "port", "hostname", "tunnel_name", "layer",
+    "project_root", "deploy_root", "workspace_url", "path_overrides",
     "caddy_rules", "environment", "systemd_config", "notes",
 ]
 
 # project/service/server identify the record; status has its own timestamps.
 CLEARABLE_FIELDS = [
     "port", "hostname", "tunnel_name",
-    "app_path", "static_path", "data_path", "log_path", "config_path",
+    "project_root", "deploy_root", "workspace_url", "path_overrides",
     "caddy_rules", "environment", "systemd_config", "notes",
 ]
 
-PATH_FIELDS = ["app_path", "static_path", "data_path", "log_path", "config_path"]
+# project_root/deploy_root are validated against the record's (post-update)
+# layer: validate_project_path for STANDARD, validate_recorded_path for
+# NONSTANDARD. path_overrides is a dict, not a plain path, so it is validated
+# per-value inline rather than through this list.
+PATH_FIELDS = ["project_root", "deploy_root"]
 
 VALID_STATUSES = [s.value for s in DeploymentStatus]
+VALID_LAYERS = [l.value for l in ServiceLayer]
 
 
 async def _would_conflict(
@@ -84,11 +93,11 @@ async def update_service(
     port: Optional[int] = None,
     hostname: Optional[str] = None,
     tunnel_name: Optional[str] = None,
-    app_path: Optional[str] = None,
-    static_path: Optional[str] = None,
-    data_path: Optional[str] = None,
-    log_path: Optional[str] = None,
-    config_path: Optional[str] = None,
+    layer: Optional[str] = None,
+    project_root: Optional[str] = None,
+    deploy_root: Optional[str] = None,
+    workspace_url: Optional[str] = None,
+    path_overrides: Optional[Dict] = None,
     caddy_rules: Optional[Dict] = None,
     environment: Optional[Dict] = None,
     systemd_config: Optional[Dict] = None,
@@ -106,6 +115,9 @@ async def update_service(
         service: Service name
         server: VPS server name
         port..notes: New values; omit a field to leave it alone
+        layer: "standard" or "nonstandard" — corrects a migration
+            mis-classification. Changes what project_root/deploy_root mean
+            (decision vs. observation) and what validator new paths go through.
         status: One of registered/deployed/stopped/archived/purged
         clear: Field names to set back to NULL (omitting a field does NOT clear it)
         force: Proceed even if another live deployment already holds the same
@@ -140,14 +152,62 @@ async def update_service(
             )
         }
 
+    if layer is not None and layer not in VALID_LAYERS:
+        return {
+            "success": False,
+            "error": "INVALID_LAYER",
+            "message": f"Layer '{layer}' must be one of {VALID_LAYERS}"
+        }
+
     updates = {
         "port": port, "hostname": hostname, "tunnel_name": tunnel_name,
-        "app_path": app_path, "static_path": static_path, "data_path": data_path,
-        "log_path": log_path, "config_path": config_path,
+        "layer": layer,
+        "project_root": project_root, "deploy_root": deploy_root,
+        "workspace_url": workspace_url, "path_overrides": path_overrides,
         "caddy_rules": caddy_rules, "environment": environment,
         "systemd_config": systemd_config, "notes": notes,
     }
     updates = {k: v for k, v in updates.items() if v is not None}
+
+    # Paths are validated against the layer the record will have *after* this
+    # update — a caller correcting layer=nonstandard in the same call is
+    # exactly the case where the old layer's validator would be wrong.
+    target_layer = ServiceLayer(layer) if layer is not None else deployment.layer
+
+    for field in PATH_FIELDS:
+        value = updates.get(field)
+        if value is None:
+            continue
+        try:
+            if target_layer == ServiceLayer.STANDARD:
+                validate_project_path(value, project, field)
+            else:
+                validate_recorded_path(value, field)
+        except ValueError as e:
+            return {"success": False, "error": "INVALID_PATH", "message": str(e)}
+
+    if path_overrides is not None:
+        allowed_keys = {"app", "static", "data", "config", "log"}
+        for key, value in path_overrides.items():
+            if key not in allowed_keys:
+                return {
+                    "success": False,
+                    "error": "INVALID_PATH_OVERRIDE_KEY",
+                    "message": f"Invalid path_overrides key '{key}': must be one of {sorted(allowed_keys)}"
+                }
+            try:
+                if target_layer == ServiceLayer.STANDARD:
+                    validate_project_path(value, project, f"path_overrides.{key}")
+                else:
+                    validate_recorded_path(value, f"path_overrides.{key}")
+            except ValueError as e:
+                return {"success": False, "error": "INVALID_PATH", "message": str(e)}
+
+    if workspace_url is not None:
+        try:
+            validate_safe_string(workspace_url, "workspace_url")
+        except ValueError as e:
+            return {"success": False, "error": "INVALID_WORKSPACE_URL", "message": str(e)}
 
     clear = clear or []
     for field in clear:
@@ -198,6 +258,7 @@ async def update_service(
 
     before = {f: getattr(deployment, f) for f in UPDATABLE_FIELDS}
     before["status"] = deployment.status.value
+    before["layer"] = before["layer"].value if before["layer"] is not None else None
 
     try:
         if updates or clear:
@@ -231,6 +292,7 @@ async def update_service(
 
     after = {f: getattr(deployment, f) for f in UPDATABLE_FIELDS}
     after["status"] = deployment.status.value
+    after["layer"] = after["layer"].value if after["layer"] is not None else None
 
     changed = {
         f: {"from": before[f], "to": after[f]}
@@ -254,7 +316,15 @@ async def update_service(
 
 
 async def validate_update_service_input(data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
-    """Validate input parameters for update_service tool."""
+    """
+    Validate input parameters for update_service tool.
+
+    Structural checks only. project_root/deploy_root/path_overrides content
+    is validated inside update_service() itself, because which validator
+    applies (validate_project_path vs. validate_recorded_path) depends on the
+    record's layer — the *stored* record, not this input dict — after this
+    call's own layer= is applied, if given. This function has no store access.
+    """
     for field in ["project", "service", "server"]:
         if field not in data:
             return False, f"Missing required field: {field}"
@@ -265,12 +335,27 @@ async def validate_update_service_input(data: Dict[str, Any]) -> tuple[bool, Opt
         if not isinstance(data["port"], int):
             return False, "Field 'port' must be an integer"
 
-    string_fields = ["hostname", "tunnel_name", "app_path", "static_path",
-                     "data_path", "log_path", "config_path", "notes", "status"]
+    string_fields = ["hostname", "tunnel_name", "project_root", "deploy_root",
+                     "workspace_url", "notes", "status", "layer"]
     for field in string_fields:
         if field in data and data[field] is not None:
             if not isinstance(data[field], str):
                 return False, f"Field '{field}' must be a string"
+
+    if "layer" in data and data["layer"] is not None:
+        if data["layer"] not in VALID_LAYERS:
+            return False, f"Field 'layer' must be one of {VALID_LAYERS}"
+
+    if "path_overrides" in data and data["path_overrides"] is not None:
+        overrides = data["path_overrides"]
+        if not isinstance(overrides, dict):
+            return False, "Field 'path_overrides' must be a dict/object"
+        allowed_keys = {"app", "static", "data", "config", "log"}
+        for key, value in overrides.items():
+            if key not in allowed_keys:
+                return False, f"Invalid path_overrides key '{key}': must be one of {sorted(allowed_keys)}"
+            if not isinstance(value, str):
+                return False, f"path_overrides['{key}'] must be a string"
 
     dict_fields = ["caddy_rules", "environment", "systemd_config"]
     for field in dict_fields:
@@ -288,13 +373,5 @@ async def validate_update_service_input(data: Dict[str, Any]) -> tuple[bool, Opt
     if "force" in data and data["force"] is not None:
         if not isinstance(data["force"], bool):
             return False, "Field 'force' must be a boolean"
-
-    project = data.get("project", "")
-    for field in PATH_FIELDS:
-        if data.get(field):
-            try:
-                validate_project_path(data[field], project, field)
-            except ValueError as e:
-                return False, str(e)
 
     return True, None
