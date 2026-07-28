@@ -84,6 +84,9 @@ def validate_project_path(path: str, project: str, field: str = "path") -> str:
     name as the exact first subdirectory component — e.g. /var/www/{project}/...
     or ~/PRJ/{project}/...  A substring match like "project in path" is NOT
     sufficient because /etc/myproject-data would pass it.
+
+    For non-standard-layer services (paths this server did not allocate),
+    use validate_recorded_path instead — it accepts any observed location.
     """
     if "\x00" in path:
         raise ValueError(f"Invalid {field}: null byte not allowed")
@@ -120,6 +123,22 @@ def validate_project_path(path: str, project: str, field: str = "path") -> str:
             if path.startswith(prefix):
                 raise ValueError(f"Invalid {field}: path cannot target system directory {prefix}")
 
+    return path
+
+
+def validate_recorded_path(path: str, field: str = "path") -> str:
+    """Validate an *observed* path recorded for a non-standard-layer service.
+
+    Unlike validate_project_path this does not confine to project-scoped
+    prefixes — reality lives where its author put it. Safety holds because
+    purge_service never deletes NONSTANDARD directories; this validator only
+    blocks traversal and shell-hostile characters.
+    """
+    validate_safe_string(path, field)
+    if not (path.startswith("/") or path.startswith("~/")):
+        raise ValueError(f"{field} must be an absolute or ~/ path, got: {path}")
+    if ".." in path.split("/"):
+        raise ValueError(f"{field} must not contain '..': {path}")
     return path
 
 
