@@ -174,34 +174,61 @@ async def update_service(
     # exactly the case where the old layer's validator would be wrong.
     target_layer = ServiceLayer(layer) if layer is not None else deployment.layer
 
-    for field in PATH_FIELDS:
-        value = updates.get(field)
-        if value is None:
-            continue
-        try:
-            if target_layer == ServiceLayer.STANDARD:
-                validate_project_path(value, project, field)
-            else:
-                validate_recorded_path(value, field)
-        except ValueError as e:
-            return {"success": False, "error": "INVALID_PATH", "message": str(e)}
-
     if path_overrides is not None:
         allowed_keys = {"app", "static", "data", "config", "log"}
-        for key, value in path_overrides.items():
+        for key in path_overrides:
             if key not in allowed_keys:
                 return {
                     "success": False,
                     "error": "INVALID_PATH_OVERRIDE_KEY",
                     "message": f"Invalid path_overrides key '{key}': must be one of {sorted(allowed_keys)}"
                 }
+
+    if target_layer == ServiceLayer.STANDARD:
+        # Promoting to (or staying) standard means project_root/deploy_root/
+        # path_overrides are decisions this server derives paths from — they
+        # must be project-scoped. Validate the *effective* post-update value
+        # (this call's, or else what is already stored), not just values this
+        # call happens to be setting: a bare layer="standard" flip with no
+        # path arguments still changes what the stored NONSTANDARD-observed
+        # roots mean, and deploy_service only guards on layer, not on
+        # whether the roots were ever checked against this validator.
+        effective_project_root = project_root if project_root is not None else deployment.project_root
+        effective_deploy_root = deploy_root if deploy_root is not None else deployment.deploy_root
+        effective_overrides = path_overrides if path_overrides is not None else (deployment.path_overrides or {})
+
+        for field, value in (("project_root", effective_project_root), ("deploy_root", effective_deploy_root)):
+            if value is None:
+                continue
             try:
-                if target_layer == ServiceLayer.STANDARD:
-                    validate_project_path(value, project, f"path_overrides.{key}")
-                else:
-                    validate_recorded_path(value, f"path_overrides.{key}")
+                validate_project_path(value, project, field)
             except ValueError as e:
                 return {"success": False, "error": "INVALID_PATH", "message": str(e)}
+
+        for key, value in effective_overrides.items():
+            try:
+                validate_project_path(value, project, f"path_overrides.{key}")
+            except ValueError as e:
+                return {"success": False, "error": "INVALID_PATH", "message": str(e)}
+    else:
+        # Staying/moving to nonstandard: only values this call is actually
+        # setting need checking — the looser recorded-path validator, since
+        # an observation can live anywhere.
+        for field in PATH_FIELDS:
+            value = updates.get(field)
+            if value is None:
+                continue
+            try:
+                validate_recorded_path(value, field)
+            except ValueError as e:
+                return {"success": False, "error": "INVALID_PATH", "message": str(e)}
+
+        if path_overrides is not None:
+            for key, value in path_overrides.items():
+                try:
+                    validate_recorded_path(value, f"path_overrides.{key}")
+                except ValueError as e:
+                    return {"success": False, "error": "INVALID_PATH", "message": str(e)}
 
     if workspace_url is not None:
         try:

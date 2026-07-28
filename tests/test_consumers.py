@@ -26,6 +26,41 @@ async def test_update_layer_and_workspace_url(store):
 
 
 @pytest.mark.asyncio
+async def test_update_layer_to_standard_rejects_out_of_scope_stored_root(store):
+    # record_service accepts any observed location for NONSTANDARD — this one
+    # is deliberately outside every project-scoped root.
+    await record_service(store, "weird-project", "app", "prod", "flask",
+                          project_root="/opt/weird/app/")
+    r = await update_service(store, "weird-project", "app", "prod", layer="standard")
+    assert not r["success"]
+    assert r["error"] == "INVALID_PATH"
+
+    # And the record must not have been silently promoted anyway.
+    info = await get_service_info(store, "weird-project", "app", "prod")
+    assert info["layer"] == "nonstandard"
+
+
+@pytest.mark.asyncio
+async def test_update_layer_to_standard_succeeds_with_compliant_root(store):
+    await record_service(store, "weird-project", "app", "prod", "flask",
+                          project_root="/opt/weird/app/",
+                          path_overrides={"data": "/opt/weird/app/data/"})
+    # Supplying a compliant project_root and overriding path_overrides in the
+    # same call replaces both offending stored values before validation runs.
+    r = await update_service(
+        store, "weird-project", "app", "prod",
+        layer="standard",
+        project_root="~/PRJ/weird-project/",
+        path_overrides={"data": "~/PRJ/weird-project/data/"},
+    )
+    assert r["success"]
+
+    info = await get_service_info(store, "weird-project", "app", "prod")
+    assert info["layer"] == "standard"
+    assert info["project_root"] == "~/PRJ/weird-project/"
+
+
+@pytest.mark.asyncio
 async def test_update_layer_field_corrects_misclassification(store):
     # register_service allocates STANDARD; correcting to nonstandard is
     # exactly the migration-mis-classification fix this field exists for.
