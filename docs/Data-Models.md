@@ -1,7 +1,7 @@
 # Infrastructure MCP Server — Data Models
 
-**Document version**: v2.0
-**Last updated**: 2026-05-16
+**Document version**: v2.1
+**Last updated**: 2026-07-28
 **Status**: Production
 
 ---
@@ -98,16 +98,16 @@ Records the configuration and lifecycle state of every managed service.
 | `port` | Integer | nullable | Port (from `port_allocations`) |
 | `hostname` | String | nullable | Public hostname |
 | `tunnel_name` | String | nullable | CF tunnel name |
-| `app_path` | String | nullable | Application code path on VPS |
-| `static_path` | String | nullable | Static files path (e.g., `/var/www/project/`) |
-| `data_path` | String | nullable | Data directory path |
-| `log_path` | String | nullable | Log directory path |
-| `config_path` | String | nullable | Config files path |
+| `layer` | Enum | NOT NULL, indexed | `standard` (this server allocated the paths) or `nonstandard` (paths are observations) |
+| `project_root` | String | nullable | Project root, e.g. `~/PRJ/{project}/` |
+| `deploy_root` | String | nullable | Static file deploy root, e.g. `/var/www/{project}/` (file-serving types only) |
+| `workspace_url` | String | nullable | Private workspace repo URL; `NULL` = no source of truth recorded |
+| `path_overrides` | JSON | nullable | Sub-path deviations from convention, keyed by `app`/`static`/`data`/`config`/`log` |
 | `caddy_rules` | JSON | nullable | Caddy routing rules object |
 | `environment` | JSON | nullable | Environment variables object |
 | `systemd_config` | JSON | nullable | Systemd unit configuration object |
 | `status` | Enum | NOT NULL, indexed | See statuses below |
-| `registered_at` | DateTime | NOT NULL | When `register_service` was called |
+| `registered_at` | DateTime | NOT NULL | When `register_service` or `record_service` was called |
 | `registered_by` | String | NOT NULL | Always `"mcp-server"` |
 | `deployed_at` | DateTime | nullable | When `deploy_service` completed |
 | `stopped_at` | DateTime | nullable | When `stop_service` was called |
@@ -125,6 +125,12 @@ Records the configuration and lifecycle state of every managed service.
 | `docker` | Docker container |
 | `flask+static` | Flask API + static frontend |
 
+**`ServiceLayer` enum**:
+| Value | Description |
+|-------|-------------|
+| `standard` | This server allocated the resources and deploys the service; `project_root`/`deploy_root` are decisions, sub-paths derived by convention |
+| `nonstandard` | The service already exists, built by its own project; every path is an observation — nothing is derived or enforced |
+
 **`DeploymentStatus` enum**:
 | Value | Meaning |
 |-------|---------|
@@ -135,6 +141,14 @@ Records the configuration and lifecycle state of every managed service.
 | `purged` | Fully deleted; excluded from normal queries |
 
 `list_service_deployments` excludes `purged` records by default.
+
+Only `project_root` and `deploy_root` are stored. Concrete sub-paths — `app/`,
+`data/`, `config/`, the log directory, and the resolved static-files path — are
+never persisted as their own columns; they are derived at read time by
+`resolve_paths()` from the roots + convention + `path_overrides`, and only for
+`layer=standard` records. A `layer=nonstandard` record derives nothing: any
+sub-path worth recording has to go in `path_overrides` explicitly, because
+there is no convention to derive it from.
 
 ---
 
@@ -202,7 +216,8 @@ ServiceDeployment(
     port           = 8000,
     hostname       = "infra.your-domain.com",
     tunnel_name    = "prod-main",
-    app_path       = "~/PRJ/infra-mcp/",
+    layer          = ServiceLayer.STANDARD,
+    project_root   = "~/PRJ/infra-mcp/",
     status         = DeploymentStatus.DEPLOYED,
     registered_at  = datetime(2026, 5, 13, ...),
     deployed_at    = datetime(2026, 5, 13, ...),

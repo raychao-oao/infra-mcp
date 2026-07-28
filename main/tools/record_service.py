@@ -1,20 +1,11 @@
 """
-register_service MCP Tool Implementation
+record_service MCP Tool Implementation
 
-This tool ONLY allocates the standard layer: it decides project_root/deploy_root
-by convention (or accepts caller-supplied overrides) and writes
-layer=ServiceLayer.STANDARD. It does not deploy anything and does not describe
-services that already exist elsewhere — for those, use `record_service`
-(nonstandard layer; paths are observations, not decisions).
-
-Unified Directory Structure (standard layer, derived by main.utils.resolve_paths):
-- /var/www/{project}/          - Static files (actual location; deploy_root)
-- ~/PRJ/{project}/             - Project root (project_root)
-- ~/PRJ/{project}/app/         - Backend code (Flask/Node.js)
-
-Port Allocation:
-- static: No port needed
-- flask/nodejs/docker/flask+static: Port allocated on deploy
+This tool records the non-standard layer: services that already exist,
+built and deployed by their own project — infra-mcp did not allocate their
+resources and does not derive paths for them. Every path field is an
+observation the caller reports; nothing is defaulted. For services this
+server owns and deploys, use `register_service` instead.
 """
 
 from datetime import datetime
@@ -24,15 +15,9 @@ import re
 from main.config import INFRA_SERVERS
 from main.db.sqlite_store import SQLiteStore
 from main.models.service_deployment import ServiceLayer
-from main.utils import resolve_paths
 
 
-# Service types that actually serve files from disk. Only these get a
-# deploy_root by default.
-FILE_SERVING_TYPES = {"static", "flask+static"}
-
-
-async def register_service(
+async def record_service(
     store: SQLiteStore,
     project: str,
     service: str,
@@ -42,7 +27,6 @@ async def register_service(
     hostname: Optional[str] = None,
     tunnel_name: Optional[str] = None,
     project_root: Optional[str] = None,
-    deploy_root: Optional[str] = None,
     path_overrides: Optional[Dict] = None,
     workspace_url: Optional[str] = None,
     caddy_rules: Optional[Dict] = None,
@@ -51,30 +35,28 @@ async def register_service(
     notes: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Register a service deployment configuration (standard layer, allocation only).
+    Record a service deployment observation (non-standard layer only).
 
     Args:
         store: SQLiteStore instance
-        project: Project name (e.g., 'pac', 'monitoring')
-        service: Service name (e.g., 'dashboard', 'uptime-kuma')
-        server: VPS server name (e.g., 'prod')
+        project: Project name (e.g., 'rss-stack', 'monitoring')
+        service: Service name (e.g., 'caddy', 'app')
+        server: VPS server name (e.g., 'prod', 'staging')
         service_type: Service type ('flask', 'nodejs', 'static', 'docker', 'flask+static')
-        port: Port number (optional, can be allocated later)
-        hostname: Public hostname (optional, e.g., 'app.your-domain.com')
-        tunnel_name: Cloudflare tunnel name (optional)
-        project_root: Project root path (default: '~/PRJ/{project}/')
-        deploy_root: Static file deploy root (default: '/var/www/{project}/' for
-            file-serving service types; None otherwise)
-        path_overrides: Dict of sub-path overrides keyed by
+        port: Port number observed in use (optional)
+        hostname: Public hostname observed (optional)
+        tunnel_name: Cloudflare tunnel name observed (optional)
+        project_root: Observed project root path (no default; None if not observed)
+        path_overrides: Dict of observed sub-path locations keyed by
             app/static/data/config/log
-        workspace_url: Private workspace repo URL (optional)
-        caddy_rules: Caddy routing rules as dict
-        environment: Environment variables as dict
-        systemd_config: Systemd service configuration as dict
+        workspace_url: Observed source-of-truth repo URL (optional)
+        caddy_rules: Observed Caddy routing rules as dict
+        environment: Observed environment variables as dict
+        systemd_config: Observed systemd service configuration as dict
         notes: Optional notes
 
     Returns:
-        Dict with success status and deployment details or error information
+        Dict with success status and recorded details or error information
     """
 
     # Validate project name format
@@ -125,21 +107,11 @@ async def register_service(
             }
         }
 
-    # Allocate roots by convention unless the caller overrode them.
-    final_project_root = project_root or f"~/PRJ/{project}/"
-    final_deploy_root = deploy_root or (
-        f"/var/www/{project}/" if service_type in FILE_SERVING_TYPES else None
-    )
-
-    # Static services don't need port
-    # Port will be allocated during deploy for flask/nodejs/docker/flask+static
-    final_port = port if service_type != "static" else None
-
     # Generate deployment ID
     timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     deployment_id = f"deploy_{project}_{service}_{server}_{timestamp}"
 
-    # Register the service
+    # Record the observation — no path is derived or defaulted.
     try:
         deployment = await store.register_service(
             deployment_id=deployment_id,
@@ -147,12 +119,12 @@ async def register_service(
             service=service,
             server=server,
             service_type=service_type,
-            port=final_port,
+            port=port,
             hostname=hostname,
             tunnel_name=tunnel_name,
-            layer=ServiceLayer.STANDARD,
-            project_root=final_project_root,
-            deploy_root=final_deploy_root,
+            layer=ServiceLayer.NONSTANDARD,
+            project_root=project_root,
+            deploy_root=None,
             path_overrides=path_overrides,
             workspace_url=workspace_url,
             caddy_rules=caddy_rules,
@@ -160,8 +132,6 @@ async def register_service(
             systemd_config=systemd_config,
             notes=notes
         )
-
-        resolved = resolve_paths(deployment)
 
         return {
             "success": True,
@@ -186,24 +156,20 @@ async def register_service(
                 "systemd_config": deployment.systemd_config
             },
             "notes": deployment.notes,
-            "message": f"Service {project}/{service} registered on {server}",
-            "port_info": "Port will be allocated during deploy" if service_type != "static" and not final_port else (
-                "Static service - no port needed" if service_type == "static" else f"Port {final_port} specified"
-            ),
-            "directory_structure": resolved
+            "message": f"Service {project}/{service} recorded on {server}"
         }
 
     except Exception as e:
         return {
             "success": False,
-            "error": "REGISTRATION_FAILED",
-            "message": f"Failed to register service: {str(e)}"
+            "error": "RECORDING_FAILED",
+            "message": f"Failed to record service: {str(e)}"
         }
 
 
-async def validate_register_service_input(data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
+async def validate_record_service_input(data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
     """
-    Validate input parameters for register_service tool.
+    Validate input parameters for record_service tool.
 
     Args:
         data: Input data dictionary
@@ -236,25 +202,25 @@ async def validate_register_service_input(data: Dict[str, Any]) -> tuple[bool, O
             return False, "Field 'port' must be an integer"
 
     # Validate optional string fields
-    string_fields = ["hostname", "tunnel_name", "project_root", "deploy_root",
-                     "workspace_url", "notes"]
+    string_fields = ["hostname", "tunnel_name", "workspace_url", "notes"]
     for field in string_fields:
         if field in data and data[field] is not None:
             if not isinstance(data[field], str):
                 return False, f"Field '{field}' must be a string"
 
-    # Validate that user-supplied paths are project-scoped and safe
-    from main.utils import validate_project_path, validate_safe_string
-    project = data.get("project", "")
-    path_fields = ["project_root", "deploy_root"]
-    for field in path_fields:
-        if data.get(field):
-            try:
-                validate_project_path(data[field], project, field)
-            except ValueError as e:
-                return False, str(e)
+    # Validate that observed paths are safe (no project-scope confinement —
+    # non-standard-layer paths live wherever their author put them).
+    from main.utils import validate_recorded_path, validate_safe_string
 
-    # Validate path_overrides: dict of sub-path key -> project-scoped path
+    if data.get("project_root") is not None:
+        if not isinstance(data["project_root"], str):
+            return False, "Field 'project_root' must be a string"
+        try:
+            validate_recorded_path(data["project_root"], "project_root")
+        except ValueError as e:
+            return False, str(e)
+
+    # Validate path_overrides: dict of sub-path key -> observed path
     if "path_overrides" in data and data["path_overrides"] is not None:
         overrides = data["path_overrides"]
         if not isinstance(overrides, dict):
@@ -266,7 +232,7 @@ async def validate_register_service_input(data: Dict[str, Any]) -> tuple[bool, O
             if not isinstance(value, str):
                 return False, f"path_overrides['{key}'] must be a string"
             try:
-                validate_project_path(value, project, f"path_overrides.{key}")
+                validate_recorded_path(value, f"path_overrides.{key}")
             except ValueError as e:
                 return False, str(e)
 

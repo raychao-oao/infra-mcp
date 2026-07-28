@@ -50,6 +50,10 @@ from main.tools.register_service import (
     register_service,
     validate_register_service_input
 )
+from main.tools.record_service import (
+    record_service,
+    validate_record_service_input
+)
 from main.tools.deploy_service import (
     deploy_service,
     validate_deploy_service_input
@@ -293,10 +297,16 @@ async def health_check():
     """Detailed health check."""
     checks = {}
 
-    # Check database connection
+    # Check database connection. list_port_allocations() alone does not
+    # catch schema drift in the service_deployments table (e.g. mid-migration
+    # columns added by ALTER but not yet backfilled, or a rename): that query
+    # never touches it. Auto-deploy's rollback greps this endpoint for
+    # "healthy", so a DB that can list ports but throws "no such column" on
+    # every deployment query must not be reported healthy.
     if store:
         try:
             await store.list_port_allocations()
+            await store.list_service_deployments()
             checks["database"] = "ok"
         except Exception:
             checks["database"] = "error"
@@ -519,7 +529,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
                 },
                 {
                     "name": "register_service",
-                    "description": "Register a service deployment configuration (planning phase - no actual deployment)",
+                    "description": "Allocate a new service deployment (standard layer only: this server owns and derives its paths). Planning phase - no actual deployment. For a service that already exists elsewhere, use record_service instead.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -552,25 +562,21 @@ async def mcp_endpoint(request: JSONRPCRequest):
                                 "type": "string",
                                 "description": "Cloudflare tunnel name (optional)"
                             },
-                            "app_path": {
+                            "project_root": {
                                 "type": "string",
-                                "description": "Application code path (e.g., '~/PRJ/PAC/dashboard/flask_app/')"
+                                "description": "Project root path (default: '~/PRJ/{project}/')"
                             },
-                            "static_path": {
+                            "deploy_root": {
                                 "type": "string",
-                                "description": "Static files path (e.g., '/var/www/pac/')"
+                                "description": "Static file deploy root (default: '/var/www/{project}/' for static/flask+static service types)"
                             },
-                            "data_path": {
-                                "type": "string",
-                                "description": "Data directory path"
+                            "path_overrides": {
+                                "type": "object",
+                                "description": "Sub-path overrides deviating from convention, keyed by app/static/data/config/log"
                             },
-                            "log_path": {
+                            "workspace_url": {
                                 "type": "string",
-                                "description": "Log directory path"
-                            },
-                            "config_path": {
-                                "type": "string",
-                                "description": "Config files path"
+                                "description": "Private workspace repo URL (optional)"
                             },
                             "caddy_rules": {
                                 "type": "object",
@@ -583,6 +589,73 @@ async def mcp_endpoint(request: JSONRPCRequest):
                             "systemd_config": {
                                 "type": "object",
                                 "description": "Systemd service configuration as JSON object"
+                            },
+                            "notes": {
+                                "type": "string",
+                                "description": "Optional notes"
+                            }
+                        },
+                        "required": ["project", "service", "server", "service_type"]
+                    }
+                },
+                {
+                    "name": "record_service",
+                    "description": "Record a service deployment observation (non-standard layer only): for services that already exist and were not deployed by this server; nothing is defaulted.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "project": {
+                                "type": "string",
+                                "description": "Project name (lowercase, hyphens allowed)"
+                            },
+                            "service": {
+                                "type": "string",
+                                "description": "Service name (lowercase, hyphens allowed)"
+                            },
+                            "server": {
+                                "type": "string",
+                                "description": "VPS server name (configured via INFRA_SERVERS)"
+                            },
+                            "service_type": {
+                                "type": "string",
+                                "enum": ["flask", "nodejs", "static", "docker", "flask+static"],
+                                "description": "Service type"
+                            },
+                            "port": {
+                                "type": "integer",
+                                "description": "Port number observed in use (optional)"
+                            },
+                            "hostname": {
+                                "type": "string",
+                                "description": "Public hostname observed (optional)"
+                            },
+                            "tunnel_name": {
+                                "type": "string",
+                                "description": "Cloudflare tunnel name observed (optional)"
+                            },
+                            "project_root": {
+                                "type": "string",
+                                "description": "Observed project root path (no default; omit if not observed)"
+                            },
+                            "path_overrides": {
+                                "type": "object",
+                                "description": "Observed sub-path locations, keyed by app/static/data/config/log"
+                            },
+                            "workspace_url": {
+                                "type": "string",
+                                "description": "Observed source-of-truth repo URL (optional)"
+                            },
+                            "caddy_rules": {
+                                "type": "object",
+                                "description": "Observed Caddy routing rules as JSON object"
+                            },
+                            "environment": {
+                                "type": "object",
+                                "description": "Observed environment variables as JSON object"
+                            },
+                            "systemd_config": {
+                                "type": "object",
+                                "description": "Observed systemd service configuration as JSON object"
                             },
                             "notes": {
                                 "type": "string",
@@ -715,11 +788,22 @@ async def mcp_endpoint(request: JSONRPCRequest):
                             "port": {"type": "integer", "description": "Port the service listens on"},
                             "hostname": {"type": "string", "description": "Public hostname"},
                             "tunnel_name": {"type": "string", "description": "Cloudflare tunnel name"},
-                            "app_path": {"type": "string", "description": "Application code path"},
-                            "static_path": {"type": "string", "description": "Static files path"},
-                            "data_path": {"type": "string", "description": "Data directory"},
-                            "log_path": {"type": "string", "description": "Log directory"},
-                            "config_path": {"type": "string", "description": "Config files path"},
+                            "layer": {
+                                "type": "string",
+                                "enum": ["standard", "nonstandard"],
+                                "description": (
+                                    "Correct a migration mis-classification: standard means this "
+                                    "server allocated project_root/deploy_root by convention; "
+                                    "nonstandard means they are observations of an existing layout."
+                                )
+                            },
+                            "project_root": {"type": "string", "description": "Project root path"},
+                            "deploy_root": {"type": "string", "description": "Static file deploy root (file-serving services only)"},
+                            "workspace_url": {"type": "string", "description": "Source-of-truth workspace repo URL"},
+                            "path_overrides": {
+                                "type": "object",
+                                "description": "Sub-path deviations from convention, keyed by app/static/data/config/log"
+                            },
                             "caddy_rules": {"type": "object", "description": "Caddy routing rules"},
                             "environment": {"type": "object", "description": "Environment variables"},
                             "systemd_config": {"type": "object", "description": "systemd service configuration"},
@@ -733,7 +817,7 @@ async def mcp_endpoint(request: JSONRPCRequest):
                                 "type": "array",
                                 "items": {"type": "string"},
                                 "description": (
-                                    "Field names to set back to NULL, e.g. a static_path that "
+                                    "Field names to set back to NULL, e.g. a deploy_root that "
                                     "nothing serves. Omitting a field leaves it unchanged."
                                 )
                             },
@@ -1607,11 +1691,33 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     port=arguments.get("port"),
                     hostname=arguments.get("hostname"),
                     tunnel_name=arguments.get("tunnel_name"),
-                    app_path=arguments.get("app_path"),
-                    static_path=arguments.get("static_path"),
-                    data_path=arguments.get("data_path"),
-                    log_path=arguments.get("log_path"),
-                    config_path=arguments.get("config_path"),
+                    project_root=arguments.get("project_root"),
+                    deploy_root=arguments.get("deploy_root"),
+                    path_overrides=arguments.get("path_overrides"),
+                    workspace_url=arguments.get("workspace_url"),
+                    caddy_rules=arguments.get("caddy_rules"),
+                    environment=arguments.get("environment"),
+                    systemd_config=arguments.get("systemd_config"),
+                    notes=arguments.get("notes")
+                )
+
+            elif tool_name == "record_service":
+                is_valid, error_msg = await validate_record_service_input(arguments)
+                if not is_valid:
+                    raise InvalidParamsError(error_msg)
+
+                result = await record_service(
+                    store=store,
+                    project=arguments["project"],
+                    service=arguments["service"],
+                    server=arguments["server"],
+                    service_type=arguments["service_type"],
+                    port=arguments.get("port"),
+                    hostname=arguments.get("hostname"),
+                    tunnel_name=arguments.get("tunnel_name"),
+                    project_root=arguments.get("project_root"),
+                    path_overrides=arguments.get("path_overrides"),
+                    workspace_url=arguments.get("workspace_url"),
                     caddy_rules=arguments.get("caddy_rules"),
                     environment=arguments.get("environment"),
                     systemd_config=arguments.get("systemd_config"),
@@ -1676,11 +1782,11 @@ async def mcp_endpoint(request: JSONRPCRequest):
                     port=arguments.get("port"),
                     hostname=arguments.get("hostname"),
                     tunnel_name=arguments.get("tunnel_name"),
-                    app_path=arguments.get("app_path"),
-                    static_path=arguments.get("static_path"),
-                    data_path=arguments.get("data_path"),
-                    log_path=arguments.get("log_path"),
-                    config_path=arguments.get("config_path"),
+                    layer=arguments.get("layer"),
+                    project_root=arguments.get("project_root"),
+                    deploy_root=arguments.get("deploy_root"),
+                    workspace_url=arguments.get("workspace_url"),
+                    path_overrides=arguments.get("path_overrides"),
                     caddy_rules=arguments.get("caddy_rules"),
                     environment=arguments.get("environment"),
                     systemd_config=arguments.get("systemd_config"),

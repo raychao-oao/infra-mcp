@@ -6,6 +6,8 @@ import os
 import re
 import shlex
 
+from main.models.service_deployment import ServiceLayer
+
 
 # Hostname: lowercase alphanumeric, hyphens, dots only (RFC 952 / RFC 1123 subset)
 _HOSTNAME_RE = re.compile(r'^[a-z0-9][a-z0-9.\-]{0,252}[a-z0-9]$')
@@ -82,6 +84,9 @@ def validate_project_path(path: str, project: str, field: str = "path") -> str:
     name as the exact first subdirectory component — e.g. /var/www/{project}/...
     or ~/PRJ/{project}/...  A substring match like "project in path" is NOT
     sufficient because /etc/myproject-data would pass it.
+
+    For non-standard-layer services (paths this server did not allocate),
+    use validate_recorded_path instead — it accepts any observed location.
     """
     if "\x00" in path:
         raise ValueError(f"Invalid {field}: null byte not allowed")
@@ -121,6 +126,22 @@ def validate_project_path(path: str, project: str, field: str = "path") -> str:
     return path
 
 
+def validate_recorded_path(path: str, field: str = "path") -> str:
+    """Validate an *observed* path recorded for a non-standard-layer service.
+
+    Unlike validate_project_path this does not confine to project-scoped
+    prefixes — reality lives where its author put it. Safety holds because
+    purge_service never deletes NONSTANDARD directories; this validator only
+    blocks traversal and shell-hostile characters.
+    """
+    validate_safe_string(path, field)
+    if not (path.startswith("/") or path.startswith("~/")):
+        raise ValueError(f"{field} must be an absolute or ~/ path, got: {path}")
+    if ".." in path.split("/"):
+        raise ValueError(f"{field} must not contain '..': {path}")
+    return path
+
+
 def get_service_name(project: str, service: str, systemd_config: dict | None = None) -> str:
     """
     Get the actual systemd/caddy service name.
@@ -139,3 +160,31 @@ def get_service_name(project: str, service: str, systemd_config: dict | None = N
         name = systemd_config["service_name"]
         return validate_service_name(name)
     return f"{project}-{service}"
+
+
+def resolve_paths(deployment) -> dict:
+    """Derive concrete sub-paths from roots + convention + overrides.
+
+    The DB stores roots and exceptions only; every consumer that needs a
+    concrete sub-path goes through here. NONSTANDARD layers derive nothing —
+    a path we did not allocate is an observation, and observations live in
+    path_overrides or nowhere.
+    """
+    paths = {"app": None, "static": None, "data": None, "config": None, "log": None}
+    stype = deployment.service_type.value if hasattr(deployment.service_type, "value") else deployment.service_type
+
+    if deployment.layer == ServiceLayer.STANDARD and deployment.project_root:
+        root = deployment.project_root.rstrip("/")
+        if stype != "static":
+            paths["app"] = f"{root}/app/"
+        paths["data"] = f"{root}/data/"
+        paths["config"] = f"{root}/config/"
+        paths["log"] = f"/var/log/{deployment.project}/"
+
+    if deployment.deploy_root:
+        paths["static"] = deployment.deploy_root
+
+    for key, value in (deployment.path_overrides or {}).items():
+        if key in paths:
+            paths[key] = value
+    return paths

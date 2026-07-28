@@ -5,10 +5,71 @@ purge_service MCP Tool Implementation
 from typing import Optional, Dict, Any, List
 
 from main.db.sqlite_store import SQLiteStore
-from main.models.service_deployment import DeploymentStatus
+from main.models.service_deployment import DeploymentStatus, ServiceLayer
 from main.providers.server_snapshot import ServerSnapshot
 from main.tools.release_port import release_port
-from main.utils import get_service_name, validate_project_path
+from main.utils import get_service_name, resolve_paths, validate_project_path
+
+NONSTANDARD_DIRS_NOTE = "directories retained: non-standard layer is not managed by this server"
+SHARED_LOG_DIR_NOTE = "log directory retained: shared with other services of this project"
+
+
+def _dirs_to_remove(
+    deployment,
+    remove_data: bool = False,
+    remove_static: bool = False,
+    remove_app: bool = False,
+    remove_logs: bool = False,
+    log_dir_has_siblings: bool = False,
+) -> List[Dict[str, str]]:
+    """
+    Decide which concrete directories a purge should delete.
+
+    NONSTANDARD-layer directories are never deleted, regardless of the flags:
+    their location is an observation this server did not allocate, and
+    purge_service does not own their lifecycle. Only STANDARD-layer
+    directories — ones this server derived from project_root/deploy_root — are
+    ever candidates for removal.
+
+    The derived log directory (/var/log/{project}/) is shared by every
+    service of the same project — it is not per-service like app/static/data.
+    Deleting it while another (non-purged) service of the project still
+    exists would remove that sibling's logs too, so it is only removable
+    when log_dir_has_siblings is False. An explicitly recorded
+    path_overrides["log"] is service-specific (someone pointed this one
+    service somewhere else on purpose) and is always removable regardless of
+    siblings.
+    """
+    if deployment.layer != ServiceLayer.STANDARD:
+        return []
+
+    paths = resolve_paths(deployment)
+    log_is_override = bool((deployment.path_overrides or {}).get("log"))
+    log_removable = remove_logs and (log_is_override or not log_dir_has_siblings)
+    wanted = (
+        ("app_path", remove_app, paths["app"]),
+        ("static_path", remove_static, paths["static"]),
+        ("data_path", remove_data, paths["data"]),
+        ("log_path", log_removable, paths["log"]),
+    )
+    return [{"label": label, "path": path} for label, requested, path in wanted if requested and path]
+
+
+async def _log_dir_has_siblings(store: SQLiteStore, deployment) -> bool:
+    """True if another non-purged deployment of the same project on the same
+    server exists. The convention-derived log directory is shared by every
+    service of a project, so it must not be deleted while a sibling might
+    still be writing to it."""
+    others = await store.list_service_deployments()
+    for other in others:
+        if other.deployment_id == deployment.deployment_id:
+            continue
+        if other.project != deployment.project or other.server != deployment.server:
+            continue
+        if other.status == DeploymentStatus.PURGED:
+            continue
+        return True
+    return False
 
 
 async def purge_service(
@@ -105,6 +166,30 @@ async def purge_service(
     cleanup_info = {}
 
     svc_name = get_service_name(project, service, deployment.systemd_config)
+    paths = resolve_paths(deployment)
+    log_dir_has_siblings = (
+        await _log_dir_has_siblings(store, deployment) if remove_logs else False
+    )
+    dirs_to_remove = _dirs_to_remove(
+        deployment,
+        remove_data=remove_data,
+        remove_static=remove_static_files,
+        remove_app=remove_app_files,
+        remove_logs=remove_logs,
+        log_dir_has_siblings=log_dir_has_siblings,
+    )
+    any_dir_requested = remove_app_files or remove_static_files or remove_data or remove_logs
+    nonstandard_dirs_blocked = (
+        any_dir_requested and deployment.layer != ServiceLayer.STANDARD
+    )
+    log_is_override = bool((deployment.path_overrides or {}).get("log"))
+    log_dir_retained_for_siblings = (
+        remove_logs
+        and deployment.layer == ServiceLayer.STANDARD
+        and paths["log"]
+        and log_dir_has_siblings
+        and not log_is_override
+    )
 
     # Locate the real unit and site files rather than deriving their names.
     # Guessing produced "not found" for services that have both, and — worse —
@@ -113,7 +198,7 @@ async def purge_service(
         snapshot = ServerSnapshot.fetch(server)
         unit_path = snapshot.locate_unit(svc_name, project)
         caddy_files, located_by = snapshot.locate_caddy_configs(
-            svc_name, deployment.hostname, deployment.port, deployment.static_path
+            svc_name, deployment.hostname, deployment.port, paths["static"]
         )
     except Exception as e:
         return {
@@ -128,15 +213,12 @@ async def purge_service(
         "caddy_located_by": located_by,
         "port_to_release": deployment.port,
         "dns_record": deployment.hostname if remove_dns_record else None,
-        "directories": [
-            p for p, wanted in (
-                (deployment.app_path, remove_app_files),
-                (deployment.static_path, remove_static_files),
-                (deployment.data_path, remove_data),
-                (deployment.log_path, remove_logs),
-            ) if wanted and p
-        ],
+        "directories": [d["path"] for d in dirs_to_remove],
     }
+    if nonstandard_dirs_blocked:
+        plan["directories_note"] = NONSTANDARD_DIRS_NOTE
+    if log_dir_retained_for_siblings:
+        plan["log_dir_note"] = SHARED_LOG_DIR_NOTE
 
     if dry_run:
         return {
@@ -265,35 +347,36 @@ async def purge_service(
                 cleanup_info["port_release_warning"] = port_result.get("message")
                 failures.append(f"release port {deployment.port}: {port_result.get('message')}")
 
-        # Step 7: Delete files (if requested). Each failure is reported; these
-        # used to be dropped, so remove_static_files=true could do nothing at
-        # all and say nothing about it.
+        # Step 7: Delete directories (if requested and the layer allows it).
+        # Each failure is reported; these used to be dropped, so
+        # remove_static_files=true could do nothing at all and say nothing
+        # about it. NONSTANDARD-layer directories are never deleted —
+        # _dirs_to_remove() already excluded them; nonstandard_dirs_blocked
+        # just makes that visible in the report.
         files_removed = []
 
-        for label, requested, path in (
-            ("app_path", remove_app_files, deployment.app_path),
-            ("static_path", remove_static_files, deployment.static_path),
-            ("data_path", remove_data, deployment.data_path),
-            ("log_path", remove_logs, deployment.log_path),
-        ):
-            if not (requested and path):
-                continue
+        for entry in dirs_to_remove:
             rm_result = await remove_directory(
-                path=path,
+                path=entry["path"],
                 server=server,
                 project=project,
             )
             if rm_result["success"]:
-                files_removed.append(path)
+                files_removed.append(entry["path"])
             else:
                 cleanup_info.setdefault("file_remove_warnings", []).append(
-                    f"{label} {path}: {rm_result.get('message')}"
+                    f"{entry['label']} {entry['path']}: {rm_result.get('message')}"
                 )
-                failures.append(f"remove {label} {path}: {rm_result.get('message')}")
+                failures.append(f"remove {entry['label']} {entry['path']}: {rm_result.get('message')}")
 
         if files_removed:
             steps_completed.append("files_removed")
             cleanup_info["files_removed"] = files_removed
+
+        if nonstandard_dirs_blocked:
+            cleanup_info["directories_note"] = NONSTANDARD_DIRS_NOTE
+        if log_dir_retained_for_siblings:
+            cleanup_info["log_dir_note"] = SHARED_LOG_DIR_NOTE
 
         # Step 8: Backup configuration and update status to purged
         backup_config = {
@@ -304,13 +387,13 @@ async def purge_service(
             "service_type": deployment.service_type.value,
             "port": deployment.port,
             "hostname": deployment.hostname,
-            "paths": {
-                "app_path": deployment.app_path,
-                "static_path": deployment.static_path,
-                "data_path": deployment.data_path,
-                "log_path": deployment.log_path,
-                "config_path": deployment.config_path
+            "layer": deployment.layer.value,
+            "roots": {
+                "project_root": deployment.project_root,
+                "deploy_root": deployment.deploy_root,
             },
+            "workspace_url": deployment.workspace_url,
+            "path_overrides": deployment.path_overrides,
             "caddy_rules": deployment.caddy_rules,
             "environment": deployment.environment,
             "systemd_config": deployment.systemd_config,
@@ -399,6 +482,7 @@ async def _find_conflicts(store: SQLiteStore, deployment) -> List[Dict[str, Any]
     """
     others = await store.list_service_deployments()
     conflicts = []
+    my_paths = resolve_paths(deployment)
 
     for other in others:
         if other.deployment_id == deployment.deployment_id:
@@ -413,10 +497,12 @@ async def _find_conflicts(store: SQLiteStore, deployment) -> List[Dict[str, Any]
             shared.append(f"hostname {deployment.hostname}")
         if deployment.port and other.port == deployment.port:
             shared.append(f"port {deployment.port}")
-        if deployment.app_path and other.app_path == deployment.app_path:
-            shared.append(f"app_path {deployment.app_path}")
-        if deployment.static_path and other.static_path == deployment.static_path:
-            shared.append(f"static_path {deployment.static_path}")
+
+        other_paths = resolve_paths(other)
+        if my_paths["app"] and other_paths["app"] == my_paths["app"]:
+            shared.append(f"app_path {my_paths['app']}")
+        if my_paths["static"] and other_paths["static"] == my_paths["static"]:
+            shared.append(f"static_path {my_paths['static']}")
 
         if shared:
             conflicts.append({

@@ -29,8 +29,9 @@ from main.db.sqlite_store import SQLiteStore
 from main.providers.ssh_provider import async_run_command
 from main.tools.allocate_port import allocate_port
 from main.tools.cloudflare.tunnel import add_public_hostname
-from main.utils import get_service_name, q, validate_hostname, validate_safe_string, validate_config_value, validate_identifier
+from main.utils import get_service_name, q, validate_hostname, validate_safe_string, validate_config_value, validate_identifier, resolve_paths
 from main.config import INFRA_SERVERS, INFRA_DEFAULT_SERVER
+from main.models.service_deployment import ServiceLayer
 
 SSH_USER = os.getenv("SSH_USER", "ubuntu")
 
@@ -261,6 +262,8 @@ async def create_dns_via_cloudflared(
 async def generate_and_write_caddy_config(
     server: str,
     deployment,
+    static_path: Optional[str] = None,
+    log_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate and write Caddy configuration file.
@@ -268,6 +271,8 @@ async def generate_and_write_caddy_config(
     Args:
         server: VPS server name
         deployment: ServiceDeployment instance
+        static_path: Resolved static files path (from resolve_paths)
+        log_path: Resolved log directory path (from resolve_paths)
 
     Returns:
         Dict with success status and config details
@@ -281,10 +286,10 @@ async def generate_and_write_caddy_config(
 
     try:
         validate_hostname(deployment.hostname)
-        if deployment.static_path:
-            validate_config_value(deployment.static_path, "static_path")
-        if deployment.log_path:
-            validate_config_value(deployment.log_path, "log_path")
+        if static_path:
+            validate_config_value(static_path, "static_path")
+        if log_path:
+            validate_config_value(log_path, "log_path")
     except ValueError as e:
         return {"success": False, "error": "INVALID_CONFIG_VALUE", "message": str(e)}
 
@@ -295,7 +300,7 @@ async def generate_and_write_caddy_config(
 
     if service_type == "static":
         # Static files only
-        config_lines.append(f"    root * {deployment.static_path}")
+        config_lines.append(f"    root * {static_path}")
         config_lines.append(f"    try_files {{path}} /index.html")
         config_lines.append(f"    file_server")
 
@@ -305,7 +310,7 @@ async def generate_and_write_caddy_config(
         config_lines.append(f"        reverse_proxy localhost:{deployment.port}")
         config_lines.append(f"    }}")
         config_lines.append(f"    handle /* {{")
-        config_lines.append(f"        root * {deployment.static_path}")
+        config_lines.append(f"        root * {static_path}")
         config_lines.append(f"        try_files {{path}} /index.html")
         config_lines.append(f"        file_server")
         config_lines.append(f"    }}")
@@ -315,7 +320,7 @@ async def generate_and_write_caddy_config(
         config_lines.append(f"    reverse_proxy localhost:{deployment.port}")
 
     # Add logging — always use a file path, not a directory
-    log_dir = (deployment.log_path or f"/var/log/{deployment.project}/").rstrip("/")
+    log_dir = (log_path or f"/var/log/{deployment.project}/").rstrip("/")
     log_file = f"{log_dir}/access.log"
     config_lines.append(f"    log {{")
     config_lines.append(f"        output file {log_file}")
@@ -366,6 +371,7 @@ async def reload_caddy(server: str) -> Dict[str, Any]:
 async def generate_and_write_systemd_service(
     server: str,
     deployment,
+    app_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generate and write systemd service file.
@@ -373,6 +379,7 @@ async def generate_and_write_systemd_service(
     Args:
         server: VPS server name
         deployment: ServiceDeployment instance
+        app_path: Resolved app code path (from resolve_paths)
 
     Returns:
         Dict with success status and service details
@@ -382,8 +389,8 @@ async def generate_and_write_systemd_service(
 
     # Validate values that go into config file content (not shell commands)
     try:
-        if deployment.app_path:
-            validate_config_value(deployment.app_path, "app_path")
+        if app_path:
+            validate_config_value(app_path, "app_path")
         if deployment.environment:
             for key, value in deployment.environment.items():
                 validate_identifier(key, "environment key")
@@ -400,7 +407,7 @@ After=network.target
 [Service]
 Type=simple
 User={SSH_USER}
-WorkingDirectory={deployment.app_path.replace('~', f'/home/{SSH_USER}')}
+WorkingDirectory={app_path.replace('~', f'/home/{SSH_USER}')}
 Environment="PORT={deployment.port}"
 """
         # Add environment variables
@@ -427,7 +434,7 @@ After=network.target
 [Service]
 Type=simple
 User={SSH_USER}
-WorkingDirectory={deployment.app_path.replace('~', f'/home/{SSH_USER}')}
+WorkingDirectory={app_path.replace('~', f'/home/{SSH_USER}')}
 Environment="PORT={deployment.port}"
 """
         if deployment.environment:
@@ -566,9 +573,20 @@ async def deploy_service(
             "deployment_id": deployment.deployment_id
         }
 
+    # Layer guard: NONSTANDARD deployments are recorded observations, not
+    # something this server allocated a layout for. Deploy is undefined.
+    if deployment.layer == ServiceLayer.NONSTANDARD:
+        return {
+            "success": False,
+            "error": "NONSTANDARD_LAYER",
+            "message": f"Service {project}/{service} on {server} is layer=nonstandard: "
+                       "this server did not allocate its layout; deploy is undefined for recorded services",
+        }
+
     steps_completed = []
     deployment_info = {}
     service_type = deployment.service_type.value
+    paths = resolve_paths(deployment)
 
     try:
         # Step 1: Create directories
@@ -576,8 +594,8 @@ async def deploy_service(
             server=server,
             project=project,
             service_type=service_type,
-            static_path=deployment.static_path,
-            app_path=deployment.app_path
+            static_path=paths["static"],
+            app_path=paths["app"]
         )
 
         if not dir_result["success"]:
@@ -657,7 +675,9 @@ async def deploy_service(
         # Step 4: Generate and write Caddy config
         caddy_result = await generate_and_write_caddy_config(
             server=server,
-            deployment=deployment
+            deployment=deployment,
+            static_path=paths["static"],
+            log_path=paths["log"],
         )
 
         if not caddy_result["success"]:
@@ -689,7 +709,8 @@ async def deploy_service(
         if service_type in ["flask", "nodejs", "flask+static"]:
             systemd_result = await generate_and_write_systemd_service(
                 server=server,
-                deployment=deployment
+                deployment=deployment,
+                app_path=paths["app"],
             )
 
             if systemd_result["success"]:
