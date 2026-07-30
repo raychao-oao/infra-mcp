@@ -192,7 +192,10 @@ async def create_directories(
         if result["success"]:
             created_dirs.append(dir_path)
 
-    # 6. Create log directory with sudo — owned by caddy so Caddy can write logs
+    # 6. Create log directory with sudo — owned by caddy so Caddy can write logs.
+    # This one is load-bearing: the generated Caddy config points its log
+    # output here, and Caddy refuses to load the WHOLE server config if the
+    # directory is missing (2026-07-30 outage).
     log_dir = f"/var/log/{project}"
     result = await run_ssh_command(
         server,
@@ -200,6 +203,8 @@ async def create_directories(
     )
     if result["success"]:
         created_dirs.append(log_dir)
+    else:
+        errors.append(f"Failed to create {log_dir}: {result.get('stderr', result.get('message'))}")
 
     if errors:
         return {
@@ -351,7 +356,14 @@ async def generate_and_write_caddy_config(
 
 async def reload_caddy(server: str) -> Dict[str, Any]:
     """
-    Reload Caddy on VPS server.
+    Reload Caddy on VPS server, without ever killing a running instance.
+
+    A failed reload leaves the previous config running — that is harmless.
+    Restart is attempted ONLY when Caddy is not running at all (first deploy,
+    or it was already dead), and its result is verified with is-active because
+    `systemctl restart` on a Type=simple unit exits 0 even when the process
+    dies immediately (2026-07-30 outage: a blind restart-on-reload-failure
+    took every site on the server down).
 
     Args:
         server: VPS server name
@@ -361,11 +373,42 @@ async def reload_caddy(server: str) -> Dict[str, Any]:
     """
     result = await run_ssh_command(server, "sudo systemctl reload caddy", timeout=30)
 
-    if not result["success"]:
-        # Try restart if reload fails
-        result = await run_ssh_command(server, "sudo systemctl restart caddy", timeout=30)
+    if result["success"]:
+        return {"success": True, "action": "reload"}
 
-    return result
+    active = await run_ssh_command(server, "systemctl is-active caddy", timeout=15)
+    if active["success"]:
+        # Caddy is still serving the previous config; the new config was
+        # rejected. Do NOT restart — that would trade a bad deploy for a
+        # full outage.
+        return {
+            "success": False,
+            "error": "CADDY_RELOAD_REJECTED",
+            "caddy_still_running": True,
+            "stderr": result.get("stderr", ""),
+            "message": "Caddy rejected the new config; previous config still running",
+        }
+
+    # Caddy is not running — nothing to lose, restart with the new config.
+    restart = await run_ssh_command(server, "sudo systemctl restart caddy", timeout=30)
+    if not restart["success"]:
+        return {
+            "success": False,
+            "error": "CADDY_RESTART_FAILED",
+            "caddy_still_running": False,
+            "stderr": restart.get("stderr", ""),
+        }
+
+    verify = await run_ssh_command(server, "sleep 2 && systemctl is-active caddy", timeout=15)
+    if verify["success"]:
+        return {"success": True, "action": "restart"}
+
+    return {
+        "success": False,
+        "error": "CADDY_DEAD_AFTER_RESTART",
+        "caddy_still_running": False,
+        "message": "systemctl restart reported success but Caddy is not active",
+    }
 
 
 async def generate_and_write_systemd_service(
@@ -696,11 +739,24 @@ async def deploy_service(
         reload_result = await reload_caddy(server)
 
         if not reload_result["success"]:
+            # Roll back the site file we just installed so the shared Caddy
+            # can come back to its previous (known-good) config, then try to
+            # bring it back up.
+            rollback = await run_ssh_command(
+                server,
+                f"sudo rm -f {q(caddy_result['config_file'])}"
+            )
+            recovery = await reload_caddy(server)
             return {
                 "success": False,
                 "error": "CADDY_RELOAD_FAILED",
                 "message": f"Failed to reload Caddy: {reload_result.get('stderr', reload_result.get('message'))}",
                 "steps_completed": steps_completed,
+                "rollback": {
+                    "site_file_removed": rollback["success"],
+                    "caddy_recovered": recovery["success"],
+                },
+                "details": reload_result,
             }
 
         steps_completed.append("caddy_reloaded")
@@ -713,21 +769,33 @@ async def deploy_service(
                 app_path=paths["app"],
             )
 
-            if systemd_result["success"]:
-                steps_completed.append("systemd_service_created")
-                deployment_info["systemd_service"] = systemd_result["service_name"]
+            if not systemd_result["success"]:
+                # A service type that NEEDS a systemd unit but didn't get one
+                # is not deployed — do not mark it as such (2026-07-30: this
+                # was silently skipped and the deploy reported success).
+                return {
+                    "success": False,
+                    "error": "SYSTEMD_SERVICE_FAILED",
+                    "message": f"Failed to install systemd unit: {systemd_result.get('message')}",
+                    "steps_completed": steps_completed,
+                    "details": systemd_result,
+                }
 
-                # Step 7: Start service
-                start_result = await start_systemd_service(
-                    server=server,
-                    service_name=systemd_result["service_name"]
-                )
+            steps_completed.append("systemd_service_created")
+            deployment_info["systemd_service"] = systemd_result["service_name"]
 
-                if start_result["success"]:
-                    steps_completed.append("service_started")
-                else:
-                    # Service start failed, but deployment still succeeded
-                    deployment_info["service_start_error"] = start_result.get("stderr", "Failed to start")
+            # Step 7: Start service
+            start_result = await start_systemd_service(
+                server=server,
+                service_name=systemd_result["service_name"]
+            )
+
+            if start_result["success"]:
+                steps_completed.append("service_started")
+            else:
+                # Service start failed (often no app code yet on first
+                # deploy) — deployment infrastructure is still in place
+                deployment_info["service_start_error"] = start_result.get("stderr", "Failed to start")
 
         # Step 8: Update deployment status
         await store.update_service_status(
